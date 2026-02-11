@@ -23,6 +23,7 @@ export const login = (data) => api.post('/auth/login', data);
 export const getProjects = () => api.get('/projects');
 export const getProject = (id) => api.get(`/projects/${id}`);
 export const createProject = (data) => api.post('/projects', data);
+export const deleteProject = (id) => api.delete(`/projects/${id}`);
 export const inviteToProject = (projectId, email) => 
   api.post(`/projects/${projectId}/invite`, { email });
 export const respondToInvitation = (projectId, action) => 
@@ -33,5 +34,19 @@ export const getPendingInvitations = () => api.get('/projects/invitations/pendin
 export const createTask = (data) => api.post('/tasks', data);
 export const updateTask = (id, data) => api.patch(`/tasks/${id}`, data);
 export const deleteTask = (id) => api.delete(`/tasks/${id}`);
+
+// Files
+export const uploadFile = (taskId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post(`/tasks/${taskId}/attachments`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+};
+export const getTaskAttachments = (taskId) => api.get(`/tasks/${taskId}/attachments`);
+export const downloadFile = (taskId, fileId) => 
+  api.get(`/tasks/${taskId}/attachments/${fileId}/download`, { responseType: 'blob' });
+export const deleteFile = (taskId, fileId) => 
+  api.delete(`/tasks/${taskId}/attachments/${fileId}`);
 
 export default api;

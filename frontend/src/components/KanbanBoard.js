@@ -174,6 +174,7 @@ function KanbanBoard({ user, onLogout }) {
                       setShowTaskModal(true);
                     }}
                     className="btn-add-task"
+                    title="Создать задачу"
                   >
                     +
                   </button>
@@ -213,6 +214,11 @@ function KanbanBoard({ user, onLogout }) {
                                   <span className="task-date">
                                     📅 {new Date(task.start_date).toLocaleDateString('ru-RU')}
                                     {task.end_date && ` - ${new Date(task.end_date).toLocaleDateString('ru-RU')}`}
+                                  </span>
+                                )}
+                                {task.attachments_count > 0 && (
+                                  <span className="task-attachments-badge" title={`Файлов: ${task.attachments_count}`}>
+                                    📎 {task.attachments_count}
                                   </span>
                                 )}
                               </div>
@@ -256,12 +262,13 @@ function KanbanBoard({ user, onLogout }) {
           members={members.filter(m => m.status === 'approved' || m.is_owner)}
           allTasks={tasks}
           onSave={selectedTask ? handleUpdateTask : handleCreateTask}
-          onDelete={selectedTask && isOwner ? () => handleDeleteTask(selectedTask.id) : null}
+          onDelete={handleDeleteTask}
           onClose={() => {
             setShowTaskModal(false);
             setSelectedTask(null);
             setSelectedStatus(null);
           }}
+          onAttachmentsChange={loadProject}
         />
       )}
 

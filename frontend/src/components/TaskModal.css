@@ -151,6 +151,146 @@
   font-style: italic;
 }
 
+/* Файлы */
+.attachments-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.btn-upload-file {
+  background: #2196f3;
+  color: white;
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border: none;
+  font-family: inherit;
+}
+
+.btn-upload-file:hover {
+  background: #1976d2;
+}
+
+.attachments-loading,
+.no-attachments {
+  color: #999;
+  font-size: 13px;
+  font-style: italic;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.attachments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.attachment-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  transition: background 0.2s;
+}
+
+.attachment-item:hover {
+  background: #e9ecef;
+}
+
+.attachment-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.attachment-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.attachment-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.attachment-name {
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-meta {
+  font-size: 12px;
+  color: #666;
+  margin-top: 2px;
+}
+
+.attachment-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-download-file,
+.btn-delete-file {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  padding: 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-download-file:hover {
+  background: #e3f2fd;
+}
+
+.btn-delete-file:hover {
+  background: #ffebee;
+}
+
+.attachments-hint {
+  font-size: 12px;
+  color: #666;
+  margin-top: 8px;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.create-task-hint {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  color: #856404;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin: 15px 0;
+}
+
 @media (max-width: 600px) {
   .task-modal {
     max-width: 95%;
@@ -180,5 +320,15 @@
 
   .btn-remove-dependency {
     width: 100%;
+  }
+
+  .attachment-info {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .attachment-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }

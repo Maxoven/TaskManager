@@ -117,6 +117,7 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   cursor: pointer;
   transition: all 0.2s;
+  position: relative;
 }
 
 .project-card:hover {
@@ -124,10 +125,37 @@
   transform: translateY(-2px);
 }
 
-.project-card h3 {
+.project-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
   margin-bottom: 10px;
+}
+
+.project-card-header h3 {
   color: #333;
   font-size: 20px;
+  margin: 0;
+  flex: 1;
+}
+
+.btn-delete-project {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  padding: 5px 8px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: all 0.2s;
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-left: 10px;
+}
+
+.btn-delete-project:hover {
+  opacity: 1;
+  background: #ffebee;
+  transform: scale(1.1);
 }
 
 .project-card p {

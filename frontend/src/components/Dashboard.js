@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getProjects, createProject, getPendingInvitations, respondToInvitation } from '../services/api';
+import { getProjects, createProject, getPendingInvitations, respondToInvitation, deleteProject } from '../services/api';
 import './Dashboard.css';
 
 function Dashboard({ user, onLogout }) {
@@ -39,6 +39,22 @@ function Dashboard({ user, onLogout }) {
       loadData();
     } catch (error) {
       console.error('Ошибка создания проекта:', error);
+    }
+  };
+
+  const handleDeleteProject = async (projectId, projectName, e) => {
+    e.stopPropagation(); // Предотвращаем открытие проекта при клике на кнопку удаления
+    
+    if (!window.confirm(`Вы уверены, что хотите удалить проект "${projectName}"? Это действие нельзя отменить.`)) {
+      return;
+    }
+
+    try {
+      await deleteProject(projectId);
+      loadData();
+    } catch (error) {
+      alert(error.response?.data?.error || 'Ошибка удаления проекта');
+      console.error('Ошибка удаления проекта:', error);
     }
   };
 
@@ -117,7 +133,18 @@ function Dashboard({ user, onLogout }) {
                 className="project-card"
                 onClick={() => navigate(`/project/${project.id}`)}
               >
-                <h3>{project.name}</h3>
+                <div className="project-card-header">
+                  <h3>{project.name}</h3>
+                  {project.role === 'owner' && (
+                    <button
+                      onClick={(e) => handleDeleteProject(project.id, project.name, e)}
+                      className="btn-delete-project"
+                      title="Удалить проект"
+                    >
+                      🗑️
+                    </button>
+                  )}
+                </div>
                 <p>{project.description}</p>
                 <div className="project-meta">
                   <span className={`role-badge ${project.role}`}>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { uploadFile, getTaskAttachments, downloadFile, deleteFile } from '../services/api';
 import './TaskModal.css';
 
-function TaskModal({ task, members, onSave, onDelete, onClose, allTasks }) {
+function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttachmentsChange }) {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -10,6 +11,9 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks }) {
     assigneeIds: [],
     dependencies: []
   });
+  const [attachments, setAttachments] = useState([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [loadingAttachments, setLoadingAttachments] = useState(false);
 
   useEffect(() => {
     if (task) {
@@ -24,8 +28,25 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks }) {
           dependency_type: d.dependency_type || 'finish_to_start'
         })) || []
       });
+      
+      // Загружаем файлы только для существующей задачи
+      loadAttachments();
     }
   }, [task]);
+
+  const loadAttachments = async () => {
+    if (!task || !task.id) return;
+    
+    setLoadingAttachments(true);
+    try {
+      const response = await getTaskAttachments(task.id);
+      setAttachments(response.data || []);
+    } catch (error) {
+      console.error('Ошибка загрузки файлов:', error);
+    } finally {
+      setLoadingAttachments(false);
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -62,6 +83,72 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks }) {
         i === index ? { ...dep, [field]: parseInt(value) || value } : dep
       )
     }));
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !task || !task.id) return;
+
+    // Проверка размера файла (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      alert('Файл слишком большой. Максимальный размер: 10MB');
+      return;
+    }
+
+    setUploadingFile(true);
+    try {
+      await uploadFile(task.id, file);
+      await loadAttachments();
+      if (onAttachmentsChange) {
+        onAttachmentsChange(); // Обновляем счетчик файлов в карточке
+      }
+      e.target.value = ''; // Сбрасываем input
+    } catch (error) {
+      alert(error.response?.data?.error || 'Ошибка загрузки файла');
+      console.error('Ошибка загрузки файла:', error);
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
+  const handleFileDownload = async (fileId, fileName) => {
+    try {
+      const response = await downloadFile(task.id, fileId);
+      
+      // Создаем ссылку для скачивания
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      alert('Ошибка скачивания файла');
+      console.error('Ошибка скачивания файла:', error);
+    }
+  };
+
+  const handleFileDelete = async (fileId, fileName) => {
+    if (!window.confirm(`Удалить файл "${fileName}"?`)) return;
+
+    try {
+      await deleteFile(task.id, fileId);
+      await loadAttachments();
+      if (onAttachmentsChange) {
+        onAttachmentsChange(); // Обновляем счетчик файлов в карточке
+      }
+    } catch (error) {
+      alert('Ошибка удаления файла');
+      console.error('Ошибка удаления файла:', error);
+    }
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
   // Фильтруем задачи для связей (исключаем текущую задачу)
@@ -190,11 +277,81 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks }) {
             </p>
           </div>
 
+          {/* Секция файлов - только для существующих задач */}
+          {task && task.id && (
+            <div className="form-group">
+              <div className="attachments-header">
+                <label>Файлы</label>
+                <label className="btn-upload-file" htmlFor="file-upload">
+                  {uploadingFile ? '⏳ Загрузка...' : '📎 Добавить файл'}
+                </label>
+                <input
+                  id="file-upload"
+                  type="file"
+                  onChange={handleFileUpload}
+                  disabled={uploadingFile}
+                  style={{ display: 'none' }}
+                  accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar"
+                />
+              </div>
+
+              {loadingAttachments ? (
+                <p className="attachments-loading">Загрузка файлов...</p>
+              ) : attachments.length === 0 ? (
+                <p className="no-attachments">Нет прикрепленных файлов</p>
+              ) : (
+                <div className="attachments-list">
+                  {attachments.map(file => (
+                    <div key={file.id} className="attachment-item">
+                      <div className="attachment-info">
+                        <span className="attachment-icon">📄</span>
+                        <div className="attachment-details">
+                          <div className="attachment-name">{file.original_name}</div>
+                          <div className="attachment-meta">
+                            {formatFileSize(file.file_size)} · {new Date(file.uploaded_at).toLocaleDateString('ru-RU')}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="attachment-actions">
+                        <button
+                          type="button"
+                          onClick={() => handleFileDownload(file.id, file.original_name)}
+                          className="btn-download-file"
+                          title="Скачать"
+                        >
+                          ⬇️
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleFileDelete(file.id, file.original_name)}
+                          className="btn-delete-file"
+                          title="Удалить"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              <p className="attachments-hint">
+                💡 Максимальный размер файла: 10MB. Поддерживаемые форматы: jpg, png, pdf, doc, docx, xls, xlsx, txt, zip, rar
+              </p>
+            </div>
+          )}
+
+          {!task && (
+            <p className="create-task-hint">
+              💡 Файлы можно будет добавить после создания задачи
+            </p>
+          )}
+
           <div className="modal-actions">
-            {onDelete && (
+            {onDelete && task && (
               <button 
                 type="button" 
-                onClick={onDelete} 
+                onClick={() => onDelete(task.id)} 
                 className="btn-danger"
               >
                 Удалить
