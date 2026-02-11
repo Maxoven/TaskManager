@@ -81,6 +81,19 @@ CREATE TABLE IF NOT EXISTS task_dependencies (
     CHECK (task_id != depends_on_task_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Таблица файлов задач
+CREATE TABLE IF NOT EXISTS task_attachments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    task_id INT,
+    filename VARCHAR(255) NOT NULL,
+    original_name VARCHAR(255) NOT NULL,
+    file_size INT NOT NULL,
+    uploaded_by INT,
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Индексы для оптимизации
 CREATE INDEX idx_projects_owner ON projects(owner_id);
 CREATE INDEX idx_project_members_project ON project_members(project_id);
@@ -90,9 +103,12 @@ CREATE INDEX idx_tasks_status ON tasks(status_id);
 CREATE INDEX idx_task_assignees_task ON task_assignees(task_id);
 CREATE INDEX idx_task_dependencies_task ON task_dependencies(task_id);
 CREATE INDEX idx_task_dependencies_depends_on ON task_dependencies(depends_on_task_id);
+CREATE INDEX idx_task_attachments_task ON task_attachments(task_id);
 
 -- Триггер для создания статусов по умолчанию
 DELIMITER $$
+
+DROP TRIGGER IF EXISTS create_project_statuses$$
 
 CREATE TRIGGER create_project_statuses
 AFTER INSERT ON projects
