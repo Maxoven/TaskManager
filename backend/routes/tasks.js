@@ -4,19 +4,20 @@ const path = require('path');
 const fs = require('fs');
 const pool = require('../config/database');
 const authMiddleware = require('../middleware/auth');
+
 const router = express.Router();
 router.use(authMiddleware);
 
-// Настройка multer для загрузки файлов
+// Настройка multer
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: function (req, file, cb) {
     const uploadsDir = path.join(__dirname, '../uploads');
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
     cb(null, uploadsDir);
   },
-  filename: (req, file, cb) => {
+  filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     cb(null, uniqueSuffix + path.extname(file.originalname));
   }
@@ -24,8 +25,8 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
-  fileFilter: (req, file, cb) => {
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: function (req, file, cb) {
     const allowedTypes = /jpeg|jpg|png|pdf|doc|docx|xls|xlsx|txt|zip|rar/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
@@ -37,9 +38,11 @@ const upload = multer({
   }
 });
 
+// Создать задачу
 router.post('/', async (req, res) => {
   try {
     const { projectId, statusId, title, description, startDate, endDate, assigneeIds, dependencies } = req.body;
+    
     const [access] = await pool.query(`
       SELECT * FROM projects p
       LEFT JOIN project_members pm ON p.id = pm.project_id
@@ -57,13 +60,11 @@ router.post('/', async (req, res) => {
 
     const taskId = result.insertId;
 
-    // Добавляем исполнителей
     if (assigneeIds && assigneeIds.length > 0) {
       const values = assigneeIds.map(uid => [taskId, uid]);
       await pool.query('INSERT INTO task_assignees (task_id, user_id) VALUES ?', [values]);
     }
 
-    // Добавляем зависимости
     if (dependencies && dependencies.length > 0) {
       const validDeps = dependencies.filter(d => d.depends_on_task_id);
       if (validDeps.length > 0) {
@@ -72,7 +73,6 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // Получаем созданную задачу с исполнителями
     const [tasksRaw] = await pool.query(`
       SELECT 
         t.*,
@@ -91,21 +91,27 @@ router.post('/', async (req, res) => {
     if (task.assignees_raw) {
       const assigneesData = task.assignees_raw.split('||');
       assigneesData.forEach(assigneeStr => {
-        const [id, name, email] = assigneeStr.split(':');
-        assignees.push({ id: parseInt(id), name, email });
+        const [userId, name, email] = assigneeStr.split(':');
+        assignees.push({ id: parseInt(userId), name: name, email: email });
       });
     }
 
-    // Получаем зависимости
     const [deps] = await pool.query(
       'SELECT depends_on_task_id, dependency_type FROM task_dependencies WHERE task_id = ?',
       [taskId]
     );
 
     res.status(201).json({
-      ...task,
-      assignees,
-      assignees_raw: undefined,
+      id: task.id,
+      project_id: task.project_id,
+      status_id: task.status_id,
+      title: task.title,
+      description: task.description,
+      start_date: task.start_date,
+      end_date: task.end_date,
+      created_at: task.created_at,
+      updated_at: task.updated_at,
+      assignees: assignees,
       dependencies: deps,
       attachments_count: parseInt(task.attachments_count) || 0
     });
@@ -115,6 +121,7 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Обновить задачу
 router.patch('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -134,7 +141,6 @@ router.patch('/:id', async (req, res) => {
       await pool.query(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`, values);
     }
 
-    // Обновляем исполнителей
     if (assigneeIds !== undefined) {
       await pool.query('DELETE FROM task_assignees WHERE task_id = ?', [id]);
       if (assigneeIds.length > 0) {
@@ -143,7 +149,6 @@ router.patch('/:id', async (req, res) => {
       }
     }
 
-    // Обновляем зависимости
     if (dependencies !== undefined) {
       await pool.query('DELETE FROM task_dependencies WHERE task_id = ?', [id]);
       const validDeps = dependencies.filter(d => d.depends_on_task_id);
@@ -153,7 +158,6 @@ router.patch('/:id', async (req, res) => {
       }
     }
 
-    // Получаем обновлённую задачу
     const [tasksRaw] = await pool.query(`
       SELECT 
         t.*,
@@ -172,21 +176,27 @@ router.patch('/:id', async (req, res) => {
     if (task.assignees_raw) {
       const assigneesData = task.assignees_raw.split('||');
       assigneesData.forEach(assigneeStr => {
-        const [aid, name, email] = assigneeStr.split(':');
-        assignees.push({ id: parseInt(aid), name, email });
+        const [userId, name, email] = assigneeStr.split(':');
+        assignees.push({ id: parseInt(userId), name: name, email: email });
       });
     }
 
-    // Получаем зависимости
     const [deps] = await pool.query(
       'SELECT depends_on_task_id, dependency_type FROM task_dependencies WHERE task_id = ?',
       [id]
     );
 
     res.json({
-      ...task,
-      assignees,
-      assignees_raw: undefined,
+      id: task.id,
+      project_id: task.project_id,
+      status_id: task.status_id,
+      title: task.title,
+      description: task.description,
+      start_date: task.start_date,
+      end_date: task.end_date,
+      created_at: task.created_at,
+      updated_at: task.updated_at,
+      assignees: assignees,
       dependencies: deps,
       attachments_count: parseInt(task.attachments_count) || 0
     });
@@ -196,11 +206,11 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
+// Удалить задачу
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Удаляем все файлы задачи
     const [attachments] = await pool.query('SELECT filename FROM task_attachments WHERE task_id = ?', [id]);
     attachments.forEach(att => {
       const filePath = path.join(__dirname, '../uploads', att.filename);
@@ -217,7 +227,7 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// Загрузка файла
+// Загрузить файл
 router.post('/:id/attachments', upload.single('file'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -239,7 +249,6 @@ router.post('/:id/attachments', upload.single('file'), async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    // Удаляем файл при ошибке
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
@@ -247,7 +256,7 @@ router.post('/:id/attachments', upload.single('file'), async (req, res) => {
   }
 });
 
-// Получение списка файлов
+// Список файлов
 router.get('/:id/attachments', async (req, res) => {
   try {
     const { id } = req.params;
@@ -266,7 +275,7 @@ router.get('/:id/attachments', async (req, res) => {
   }
 });
 
-// Скачивание файла
+// Скачать файл
 router.get('/:taskId/attachments/:fileId/download', async (req, res) => {
   try {
     const { taskId, fileId } = req.params;
@@ -294,7 +303,7 @@ router.get('/:taskId/attachments/:fileId/download', async (req, res) => {
   }
 });
 
-// Удаление файла
+// Удалить файл
 router.delete('/:taskId/attachments/:fileId', async (req, res) => {
   try {
     const { taskId, fileId } = req.params;
@@ -311,12 +320,10 @@ router.delete('/:taskId/attachments/:fileId', async (req, res) => {
     const file = files[0];
     const filePath = path.join(__dirname, '../uploads', file.filename);
 
-    // Удаляем файл с диска
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
 
-    // Удаляем запись из БД
     await pool.query('DELETE FROM task_attachments WHERE id = ?', [fileId]);
 
     res.json({ message: 'Файл удалён' });

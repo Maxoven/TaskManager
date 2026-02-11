@@ -1,9 +1,13 @@
 const express = require('express');
 const pool = require('../config/database');
 const authMiddleware = require('../middleware/auth');
+
 const router = express.Router();
+
+// Применяем middleware аутентификации ко всем маршрутам
 router.use(authMiddleware);
 
+// Получить все проекты пользователя
 router.get('/', async (req, res) => {
   try {
     const [rows] = await pool.query(`
@@ -22,6 +26,7 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Создать проект
 router.post('/', async (req, res) => {
   try {
     const { name, description } = req.body;
@@ -37,11 +42,11 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Удалить проект
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Проверяем, что пользователь - владелец проекта
     const [projects] = await pool.query(
       'SELECT * FROM projects WHERE id = ? AND owner_id = ?',
       [id, req.userId]
@@ -59,9 +64,11 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// Получить один проект со всеми данными
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    
     const [access] = await pool.query(`
       SELECT p.* FROM projects p
       LEFT JOIN project_members pm ON p.id = pm.project_id
@@ -72,9 +79,11 @@ router.get('/:id', async (req, res) => {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
 
-    const [statuses] = await pool.query('SELECT * FROM statuses WHERE project_id = ? ORDER BY position', [id]);
+    const [statuses] = await pool.query(
+      'SELECT * FROM statuses WHERE project_id = ? ORDER BY position',
+      [id]
+    );
     
-    // Получаем задачи с исполнителями и количеством файлов
     const [tasksRaw] = await pool.query(`
       SELECT 
         t.*,
@@ -89,34 +98,42 @@ router.get('/:id', async (req, res) => {
       ORDER BY t.created_at DESC
     `, [id]);
 
-    // Преобразуем данные исполнителей в массив объектов
     const tasks = tasksRaw.map(task => {
       const assignees = [];
       if (task.assignees_raw) {
         const assigneesData = task.assignees_raw.split('||');
         assigneesData.forEach(assigneeStr => {
-          const [id, name, email] = assigneeStr.split(':');
-          assignees.push({ id: parseInt(id), name, email });
+          const [userId, name, email] = assigneeStr.split(':');
+          assignees.push({ 
+            id: parseInt(userId), 
+            name: name, 
+            email: email 
+          });
         });
       }
       
-      // Получаем зависимости для задачи
       return {
-        ...task,
-        assignees,
-        assignees_raw: undefined, // Удаляем временное поле
-        attachments_count: parseInt(task.attachments_count) || 0
+        id: task.id,
+        project_id: task.project_id,
+        status_id: task.status_id,
+        title: task.title,
+        description: task.description,
+        start_date: task.start_date,
+        end_date: task.end_date,
+        created_at: task.created_at,
+        updated_at: task.updated_at,
+        assignees: assignees,
+        attachments_count: parseInt(task.attachments_count) || 0,
+        dependencies: []
       };
     });
 
-    // Получаем зависимости для всех задач
     const [dependencies] = await pool.query(`
       SELECT task_id, depends_on_task_id, dependency_type
       FROM task_dependencies
       WHERE task_id IN (SELECT id FROM tasks WHERE project_id = ?)
     `, [id]);
 
-    // Добавляем зависимости к задачам
     tasks.forEach(task => {
       task.dependencies = dependencies.filter(d => d.task_id === task.id);
     });
@@ -137,9 +154,9 @@ router.get('/:id', async (req, res) => {
 
     res.json({
       ...access[0],
-      statuses,
-      tasks,
-      members
+      statuses: statuses,
+      tasks: tasks,
+      members: members
     });
   } catch (error) {
     console.error(error);
@@ -147,12 +164,12 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// Пригласить пользователя в проект
 router.post('/:id/invite', async (req, res) => {
   try {
     const { id } = req.params;
     const { email } = req.body;
 
-    // Проверяем, что пользователь - владелец проекта
     const [projects] = await pool.query(
       'SELECT * FROM projects WHERE id = ? AND owner_id = ?',
       [id, req.userId]
@@ -162,7 +179,6 @@ router.post('/:id/invite', async (req, res) => {
       return res.status(403).json({ error: 'Только владелец может приглашать' });
     }
 
-    // Находим пользователя по email
     const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
     
     if (users.length === 0) {
@@ -171,7 +187,6 @@ router.post('/:id/invite', async (req, res) => {
 
     const invitedUser = users[0];
 
-    // Проверяем, не приглашён ли уже
     const [existing] = await pool.query(
       'SELECT * FROM project_members WHERE project_id = ? AND user_id = ?',
       [id, invitedUser.id]
@@ -181,7 +196,6 @@ router.post('/:id/invite', async (req, res) => {
       return res.status(400).json({ error: 'Пользователь уже приглашён' });
     }
 
-    // Создаём приглашение
     await pool.query(
       'INSERT INTO project_members (project_id, user_id, status) VALUES (?, ?, ?)',
       [id, invitedUser.id, 'pending']
@@ -194,6 +208,7 @@ router.post('/:id/invite', async (req, res) => {
   }
 });
 
+// Получить приглашения пользователя
 router.get('/invitations/pending', async (req, res) => {
   try {
     const [invitations] = await pool.query(`
@@ -212,6 +227,7 @@ router.get('/invitations/pending', async (req, res) => {
   }
 });
 
+// Принять или отклонить приглашение
 router.patch('/:id/invitation/:action', async (req, res) => {
   try {
     const { id, action } = req.params;
