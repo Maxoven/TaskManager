@@ -4,6 +4,9 @@ import Login from './components/Login';
 import Register from './components/Register';
 import Dashboard from './components/Dashboard';
 import KanbanBoard from './components/KanbanBoard';
+import ForgotPassword from './components/ForgotPassword';
+import ResetPassword from './components/ResetPassword';
+import ReportForm from './components/ReportForm';
 import './App.css';
 
 function App() {
@@ -12,9 +15,7 @@ function App() {
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
+    if (storedUser) setUser(JSON.parse(storedUser));
   }, []);
 
   const handleLogin = (userData, authToken) => {
@@ -35,22 +36,14 @@ function App() {
     <Router>
       <div className="app">
         <Routes>
-          <Route 
-            path="/login" 
-            element={!token ? <Login onLogin={handleLogin} /> : <Navigate to="/" />} 
-          />
-          <Route 
-            path="/register" 
-            element={!token ? <Register onRegister={handleLogin} /> : <Navigate to="/" />} 
-          />
-          <Route 
-            path="/" 
-            element={token ? <Dashboard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} 
-          />
-          <Route 
-            path="/project/:id" 
-            element={token ? <KanbanBoard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} 
-          />
+          <Route path="/login" element={!token ? <Login onLogin={handleLogin} /> : <Navigate to="/" />} />
+          <Route path="/register" element={!token ? <Register onRegister={handleLogin} /> : <Navigate to="/" />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
+          {/* Публичная страница отчёта (magic link) */}
+          <Route path="/report/:token" element={<ReportForm />} />
+          <Route path="/" element={token ? <Dashboard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />
+          <Route path="/project/:id" element={token ? <KanbanBoard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />
         </Routes>
       </div>
     </Router>

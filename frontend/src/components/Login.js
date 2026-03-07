@@ -13,7 +13,6 @@ function Login({ onLogin }) {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     try {
       const response = await login({ email, password });
       onLogin(response.data.user, response.data.token);
@@ -31,29 +30,20 @@ function Login({ onLogin }) {
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="your@email.com"
-            />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="your@email.com" />
           </div>
           <div className="form-group">
             <label>Пароль</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              placeholder="Введите пароль"
-            />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="Введите пароль" />
           </div>
           {error && <div className="error">{error}</div>}
           <button type="submit" disabled={loading} className="btn-primary">
             {loading ? 'Вход...' : 'Войти'}
           </button>
         </form>
+        <p className="auth-link">
+          <Link to="/forgot-password" className="forgot-link">Забыли пароль?</Link>
+        </p>
         <p className="auth-link">
           Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
         </p>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { uploadFile, getTaskAttachments, downloadFile, deleteFile } from '../services/api';
+import { uploadFile, getTaskAttachments, downloadFile, deleteFile, getTaskReports } from '../services/api';
 import './TaskModal.css';
 
 function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttachmentsChange }) {
@@ -14,6 +14,8 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttac
   const [attachments, setAttachments] = useState([]);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [loadingAttachments, setLoadingAttachments] = useState(false);
+  const [reports, setReports] = useState([]);
+  const [loadingReports, setLoadingReports] = useState(false);
 
   useEffect(() => {
     if (task) {
@@ -31,8 +33,22 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttac
       
       // Загружаем файлы только для существующей задачи
       loadAttachments();
+      loadReports();
     }
   }, [task]);
+
+  const loadReports = async () => {
+    if (!task || !task.id) return;
+    setLoadingReports(true);
+    try {
+      const response = await getTaskReports(task.id);
+      setReports(response.data || []);
+    } catch (error) {
+      console.error('Ошибка загрузки отчётов:', error);
+    } finally {
+      setLoadingReports(false);
+    }
+  };
 
   const loadAttachments = async () => {
     if (!task || !task.id) return;
@@ -345,6 +361,30 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttac
             <p className="create-task-hint">
               💡 Файлы можно будет добавить после создания задачи
             </p>
+          )}
+
+          {/* Секция отчётов — только для существующих задач */}
+          {task && task.id && (
+            <div className="form-group reports-section">
+              <label>Отчёты по задаче</label>
+              {loadingReports ? (
+                <p style={{ color: '#888', fontSize: '13px' }}>Загрузка отчётов...</p>
+              ) : reports.length === 0 ? (
+                <p style={{ color: '#888', fontSize: '13px' }}>Отчётов пока нет</p>
+              ) : (
+                <div className="reports-list">
+                  {reports.map(report => (
+                    <div key={report.id} className="report-item">
+                      <div className="report-header">
+                        <span className="report-author">👤 {report.user_name}</span>
+                        <span className="report-date">{new Date(report.submitted_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      <p className="report-text">{report.report_text}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           <div className="modal-actions">

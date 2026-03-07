@@ -191,3 +191,135 @@
 .project-owner {
   color: #999;
 }
+
+/* Добавить в конец существующего Dashboard.css */
+
+/* Вкладки */
+.dashboard-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 24px 24px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.tab-btn {
+  padding: 10px 20px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 15px;
+  color: #666;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover { color: #25b84c; }
+.tab-btn.active { color: #25b84c; border-bottom-color: #25b84c; font-weight: 600; }
+
+.badge-count {
+  background: #ef5350;
+  color: white;
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+/* Подсказка */
+.hint-text {
+  color: #aaa;
+  font-size: 13px;
+  margin: -12px 0 16px;
+}
+
+/* Карточка проекта — обновление */
+.project-card.dragging {
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  transform: rotate(1deg);
+}
+
+.drag-handle {
+  cursor: grab;
+  color: #ccc;
+  font-size: 18px;
+  padding: 0 4px;
+  user-select: none;
+  flex-shrink: 0;
+}
+.drag-handle:active { cursor: grabbing; }
+
+.project-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.project-card-header h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 16px;
+}
+
+.project-card-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-icon-sm {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: #f5f5f5;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+.btn-icon-sm:hover { background: #e8e8e8; }
+.btn-danger-sm:hover { background: #ffe8e8; }
+
+/* Мои задачи */
+.mytasks-section { padding: 0 24px 24px; }
+.mytasks-section h2 { margin: 0 0 16px; }
+
+.mytasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mytask-card {
+  background: white;
+  border: 1px solid #e8e8e8;
+  border-left: 4px solid #25b84c;
+  border-radius: 8px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+.mytask-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.mytask-card.overdue { border-left-color: #ef5350; }
+.mytask-card.due-soon { border-left-color: #ff9800; }
+
+.mytask-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.mytask-project { font-size: 12px; color: #25b84c; font-weight: 600; }
+.mytask-status { font-size: 12px; color: #888; background: #f5f5f5; padding: 2px 8px; border-radius: 10px; }
+.mytask-title { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.mytask-desc { margin: 0 0 8px; font-size: 13px; color: #666; }
+.mytask-footer { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mytask-deadline { font-size: 13px; color: #666; }
+.mytask-deadline.overdue { color: #ef5350; font-weight: 600; }
+.mytask-deadline.due-soon { color: #ff9800; font-weight: 600; }
+.mytask-report-badge { font-size: 12px; color: #25b84c; font-weight: 600; }

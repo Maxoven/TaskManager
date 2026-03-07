@@ -275,3 +275,64 @@
     max-width: 100%;
   }
 }
+
+/* ─── Добавить в конец KanbanBoard.css ─── */
+
+/* Фильтры */
+.kanban-filters {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+  background: #f9f9f9;
+  border-bottom: 1px solid #e8e8e8;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-group label {
+  font-size: 13px;
+  color: #666;
+  white-space: nowrap;
+}
+
+.filter-group select {
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  background: white;
+  cursor: pointer;
+}
+
+.btn-reset-filters {
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  background: white;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.2s;
+}
+.btn-reset-filters:hover { background: #f0f0f0; }
+
+/* Дедлайн на карточке */
+.task-card.deadline-overdue { border-left: 3px solid #ef5350; }
+.task-card.deadline-soon { border-left: 3px solid #ff9800; }
+.task-date.deadline-overdue { color: #ef5350; }
+.task-date.deadline-soon { color: #ff9800; }
+.task-report-badge { font-size: 14px; }
+
+/* Редактирование проекта */
+.project-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.project-title-row h1 { margin: 0; }

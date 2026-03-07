@@ -231,3 +231,84 @@
     font-size: 12px;
   }
 }
+
+.project-desc { margin: 2px 0 0; color: #666; font-size: 14px; }
+
+.btn-edit-project {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 16px;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+.btn-edit-project:hover { opacity: 1; }
+
+
+/* ─── Добавить в конец GanttChart.css ─── */
+
+/* Навигация */
+.gantt-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0 16px;
+  flex-wrap: wrap;
+}
+
+.gantt-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gantt-nav-btn {
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+.gantt-nav-btn:hover { background: #f0f0f0; }
+.gantt-today-btn { color: #25b84c; border-color: #25b84c; }
+.gantt-today-btn:hover { background: #e8f5e9; }
+
+.gantt-period-label {
+  font-size: 13px;
+  color: #666;
+  margin-left: 4px;
+}
+
+/* Выбор периода */
+.gantt-period-selector {
+  display: flex;
+  gap: 4px;
+  background: #f0f0f0;
+  padding: 3px;
+  border-radius: 8px;
+}
+
+.period-btn {
+  padding: 5px 12px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #666;
+  transition: all 0.2s;
+}
+.period-btn:hover { background: white; }
+.period-btn.active { background: white; color: #25b84c; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+/* Заголовок с месяцами */
+.gantt-months-row {
+  display: flex;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.gantt-month-header {
+  padding: 4px 8px;
+  font-size: 12px;
