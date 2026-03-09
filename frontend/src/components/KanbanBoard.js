@@ -187,7 +187,7 @@ function KanbanBoard({ user, onLogout }) {
         <div className="members-list">
           {members.map(member => (
             <div key={member.id} className="member-badge">
-              {member.name} {member.is_owner && '👑'}
+              {member.name} {member.is_owner == 1 && '👑'}
               {member.status === 'pending' && ' (ожидает)'}
             </div>
           ))}

@@ -1,259 +1,17 @@
 .gantt-container {
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  margin: 20px 0;
+  padding: 0 24px 24px;
   overflow: hidden;
 }
 
-.gantt-controls {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.gantt-legend {
-  display: flex;
-  gap: 20px;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.legend-color {
-  width: 20px;
-  height: 12px;
-  border-radius: 3px;
-}
-
-.gantt-empty {
-  text-align: center;
-  padding: 60px 20px;
-  color: #999;
-}
-
-.gantt-empty p {
-  margin: 10px 0;
-}
-
-.gantt-chart {
-  position: relative;
-  overflow-x: auto;
-  overflow-y: auto;
-  max-height: 600px;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-}
-
-.gantt-header {
-  display: flex;
-  background: #f5f5f5;
-  border-bottom: 2px solid #e0e0e0;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-.gantt-sidebar-header {
-  width: 250px;
-  min-width: 250px;
-  padding: 15px;
-  font-weight: 600;
-  border-right: 1px solid #e0e0e0;
-  background: #f5f5f5;
-}
-
-.gantt-timeline-header {
-  display: flex;
-  flex: 1;
-  min-width: 800px;
-}
-
-.gantt-day-header {
-  padding: 8px 4px;
-  text-align: center;
-  font-size: 11px;
-  color: #666;
-  border-right: 1px solid #e0e0e0;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.gantt-body {
-  position: relative;
-}
-
-.gantt-row {
-  display: flex;
-  border-bottom: 1px solid #e0e0e0;
-  min-height: 60px;
-  position: relative;
-}
-
-.gantt-row:hover {
-  background: #fafafa;
-}
-
-.gantt-sidebar {
-  width: 250px;
-  min-width: 250px;
-  padding: 12px 15px;
-  border-right: 1px solid #e0e0e0;
-  background: white;
-  position: sticky;
-  left: 0;
-  z-index: 5;
-}
-
-.gantt-task-info {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.gantt-task-title {
-  font-size: 14px;
-  color: #333;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.gantt-task-assignees {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.gantt-assignee-badge {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: #e3f2fd;
-  color: #1976d2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.gantt-timeline {
-  flex: 1;
-  position: relative;
-  display: flex;
-  min-width: 800px;
-}
-
-.gantt-day-cell {
-  border-right: 1px solid #f0f0f0;
-  min-height: 60px;
-}
-
-.gantt-day-cell:nth-child(7n),
-.gantt-day-cell:nth-child(7n-1) {
-  background: #fafafa;
-}
-
-.gantt-task-bar {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 32px;
-  border-radius: 4px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s;
-  z-index: 2;
-}
-
-.gantt-task-bar:hover {
-  transform: translateY(-50%) scale(1.02);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  z-index: 3;
-}
-
-.gantt-task-bar-label {
-  color: white;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.gantt-dependencies-svg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* Скроллбар */
-.gantt-chart::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.gantt-chart::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
-.gantt-chart::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 4px;
-}
-
-.gantt-chart::-webkit-scrollbar-thumb:hover {
-  background: #555;
-}
-
-@media (max-width: 768px) {
-  .gantt-sidebar,
-  .gantt-sidebar-header {
-    width: 150px;
-    min-width: 150px;
-  }
-
-  .gantt-task-title {
-    font-size: 12px;
-  }
-}
-
-.project-desc { margin: 2px 0 0; color: #666; font-size: 14px; }
-
-.btn-edit-project {
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: 16px;
-  opacity: 0.6;
-  transition: opacity 0.2s;
-}
-.btn-edit-project:hover { opacity: 1; }
-
-
-/* ─── Добавить в конец GanttChart.css ─── */
-
-/* Навигация */
+/* ─── Панель управления ─── */
 .gantt-controls {
   display: flex;
   align-items: center;
   gap: 16px;
   padding: 12px 0 16px;
   flex-wrap: wrap;
+  position: relative;
+  z-index: 10;
 }
 
 .gantt-nav {
@@ -270,6 +28,7 @@
   cursor: pointer;
   font-size: 13px;
   transition: all 0.2s;
+  line-height: 1;
 }
 .gantt-nav-btn:hover { background: #f0f0f0; }
 .gantt-today-btn { color: #25b84c; border-color: #25b84c; }
@@ -279,9 +38,9 @@
   font-size: 13px;
   color: #666;
   margin-left: 4px;
+  white-space: nowrap;
 }
 
-/* Выбор периода */
 .gantt-period-selector {
   display: flex;
   gap: 4px;
@@ -299,16 +58,285 @@
   font-size: 13px;
   color: #666;
   transition: all 0.2s;
+  position: relative;
+  z-index: 10;
 }
 .period-btn:hover { background: white; }
-.period-btn.active { background: white; color: #25b84c; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.period-btn.active {
+  background: white;
+  color: #25b84c;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
 
-/* Заголовок с месяцами */
+.gantt-legend {
+  display: flex;
+  gap: 16px;
+  margin-left: auto;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #666;
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* ─── Основная таблица ─── */
+.gantt-chart {
+  overflow-x: auto;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  background: white;
+}
+
+/* ─── Заголовок ─── */
+.gantt-header {
+  display: flex;
+  border-bottom: 2px solid #e8e8e8;
+  background: #fafafa;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.gantt-sidebar-header {
+  width: 200px;
+  min-width: 200px;
+  padding: 10px 14px;
+  font-weight: 600;
+  font-size: 13px;
+  color: #555;
+  border-right: 2px solid #e8e8e8;
+  display: flex;
+  align-items: center;
+}
+
+.gantt-timeline-header {
+  flex: 1;
+  overflow: hidden;
+}
+
 .gantt-months-row {
   display: flex;
   border-bottom: 1px solid #e8e8e8;
+  min-width: 100%;
 }
 
 .gantt-month-header {
-  padding: 4px 8px;
+  padding: 5px 8px;
   font-size: 12px;
+  font-weight: 600;
+  color: #333;
+  border-right: 1px solid #ddd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+
+.gantt-days-row {
+  display: flex;
+  min-width: 100%;
+}
+
+.gantt-day-header {
+  text-align: center;
+  padding: 3px 0;
+  font-size: 10px;
+  color: #aaa;
+  border-right: 1px solid #f0f0f0;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.gantt-day-header.today {
+  background: #e8f5e9;
+  color: #25b84c;
+  font-weight: bold;
+}
+.gantt-day-header.weekend {
+  background: #f9f9f9;
+  color: #ccc;
+}
+
+/* ─── Тело ─── */
+.gantt-body {
+  min-width: 100%;
+}
+
+.gantt-row {
+  display: flex;
+  border-bottom: 1px solid #f0f0f0;
+  min-height: 48px;
+}
+.gantt-row:last-child { border-bottom: none; }
+.gantt-row:hover { background: #fafffe; }
+
+.gantt-row-hidden {
+  opacity: 0.4;
+}
+
+/* ─── Сайдбар задачи ─── */
+.gantt-sidebar {
+  width: 200px;
+  min-width: 200px;
+  padding: 8px 14px;
+  border-right: 2px solid #e8e8e8;
+  display: flex;
+  align-items: center;
+  background: white;
+  position: sticky;
+  left: 0;
+  z-index: 5;
+}
+
+.gantt-task-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.gantt-task-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gantt-task-assignees {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.gantt-assignee-badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #25b84c;
+  color: white;
+  font-size: 10px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ─── Временная шкала ─── */
+.gantt-timeline {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  overflow: hidden;
+}
+
+.gantt-day-cell {
+  height: 100%;
+  border-right: 1px solid #f5f5f5;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.gantt-day-cell.weekend {
+  background: rgba(0,0,0,0.02);
+}
+
+.gantt-day-cell.today-cell {
+  background: rgba(37, 184, 76, 0.05);
+}
+
+/* Линия "сегодня" */
+.gantt-today-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #25b84c;
+  z-index: 4;
+  pointer-events: none;
+}
+.gantt-today-line::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  background: #25b84c;
+  border-radius: 50%;
+}
+
+/* ─── Полоса задачи ─── */
+.gantt-task-bar {
+  position: absolute;
+  height: 26px;
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  transition: opacity 0.2s, filter 0.2s;
+  min-width: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.gantt-task-bar:hover {
+  opacity: 0.85;
+  filter: brightness(1.05);
+}
+
+.gantt-task-bar-label {
+  font-size: 11px;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 8px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+/* ─── Вне периода ─── */
+.gantt-out-of-view {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  color: #ccc;
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* ─── Пустое состояние ─── */
+.gantt-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+}
+.gantt-empty p:first-child {
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+.gantt-empty p:last-child {
+  font-size: 13px;
+}

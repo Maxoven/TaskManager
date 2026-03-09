@@ -26,19 +26,20 @@ function GanttChart({ tasks, onTaskClick, members }) {
   const goForward = () => setViewStart(prev => addDays(prev, Math.round(periodDays / 3)));
   const goToday = () => setViewStart(subDays(today, Math.round(periodDays / 6)));
 
-  // Позиция задачи
+  // Позиция задачи — в пикселях (28px на день)
+  const DAY_WIDTH = 28;
   const getTaskPosition = (task) => {
     const taskStart = startOfDay(new Date(task.start_date));
     const taskEnd = startOfDay(new Date(task.end_date));
     const startOffset = differenceInDays(taskStart, viewStart);
     const duration = differenceInDays(taskEnd, taskStart) + 1;
-    const left = (startOffset / totalDays) * 100;
-    const width = (duration / totalDays) * 100;
-    // Clamp — задача может выходить за пределы
-    const clampedLeft = Math.max(0, Math.min(left, 100));
-    const clampedWidth = Math.max(0.5, Math.min(width, 100 - clampedLeft));
-    const isOutOfView = left + width < 0 || left > 100;
-    return { left: `${clampedLeft}%`, width: `${clampedWidth}%`, isOutOfView };
+    const left = startOffset * DAY_WIDTH;
+    const width = duration * DAY_WIDTH;
+    const totalWidth = totalDays * DAY_WIDTH;
+    const isOutOfView = left + width < 0 || left > totalWidth;
+    const clampedLeft = Math.max(0, left);
+    const clampedWidth = Math.max(4, Math.min(width, totalWidth - clampedLeft));
+    return { left: `${clampedLeft}px`, width: `${clampedWidth}px`, isOutOfView };
   };
 
   const getTaskColor = (task) => {
@@ -47,10 +48,10 @@ function GanttChart({ tasks, onTaskClick, members }) {
     return '#42a5f5';
   };
 
-  // Позиция линии "сегодня"
+  // Позиция линии "сегодня" в пикселях
   const todayOffset = differenceInDays(today, viewStart);
-  const todayPercent = (todayOffset / totalDays) * 100;
-  const showTodayLine = todayPercent >= 0 && todayPercent <= 100;
+  const todayPx = todayOffset * DAY_WIDTH;
+  const showTodayLine = todayOffset >= 0 && todayOffset <= totalDays;
 
   // Группировка дней по месяцам для заголовка
   const months = [];
@@ -108,12 +109,12 @@ function GanttChart({ tasks, onTaskClick, members }) {
 
       <div className="gantt-chart" ref={chartRef}>
         {/* Заголовок — месяцы */}
-        <div className="gantt-header">
+        <div className="gantt-header" style={{ minWidth: `${totalDays * 28 + 200}px` }}>
           <div className="gantt-sidebar-header">Задача</div>
-          <div className="gantt-timeline-header">
+          <div className="gantt-timeline-header" style={{ minWidth: `${totalDays * 28}px` }}>
             <div className="gantt-months-row">
               {months.map((m, i) => (
-                <div key={i} className="gantt-month-header" style={{ width: `${(m.count / totalDays) * 100}%` }}>
+                <div key={i} className="gantt-month-header" style={{ width: `${m.count * 28}px`, minWidth: `${m.count * 28}px`, flexShrink: 0 }}>
                   {m.label}
                 </div>
               ))}
@@ -123,10 +124,9 @@ function GanttChart({ tasks, onTaskClick, members }) {
                 <div
                   key={index}
                   className={`gantt-day-header ${isToday(day) ? 'today' : ''} ${isWeekend(day) ? 'weekend' : ''}`}
-                  style={{ width: `${100 / totalDays}%` }}
+                  style={{ width: '28px', minWidth: '28px', flexShrink: 0 }}
                 >
-                  {/* Показываем число только если не слишком много дней */}
-                  {totalDays <= 60 ? format(day, 'd') : (day.getDate() === 1 || day.getDate() % 5 === 0 ? format(day, 'd') : '')}
+                  {day.getDate()}
                 </div>
               ))}
             </div>
@@ -134,7 +134,7 @@ function GanttChart({ tasks, onTaskClick, members }) {
         </div>
 
         {/* Строки задач */}
-        <div className="gantt-body">
+        <div className="gantt-body" style={{ minWidth: `${totalDays * 28 + 200}px` }}>
           {tasksWithDates.map((task) => {
             const pos = getTaskPosition(task);
             if (pos.isOutOfView) return (
@@ -166,18 +166,24 @@ function GanttChart({ tasks, onTaskClick, members }) {
                     )}
                   </div>
                 </div>
-                <div className="gantt-timeline" style={{ position: 'relative' }}>
-                  {/* Сетка */}
+                <div className="gantt-timeline" style={{ position: 'relative', minWidth: `${totalDays * 28}px` }}>
+                  {/* Сетка — через абсолютное позиционирование */}
                   {days.map((day, index) => (
                     <div
                       key={index}
                       className={`gantt-day-cell ${isWeekend(day) ? 'weekend' : ''} ${isToday(day) ? 'today-cell' : ''}`}
-                      style={{ width: `${100 / totalDays}%` }}
+                      style={{
+                        position: 'absolute',
+                        left: `${index * 28}px`,
+                        width: '28px',
+                        top: 0,
+                        bottom: 0
+                      }}
                     />
                   ))}
                   {/* Линия сегодня */}
                   {showTodayLine && (
-                    <div className="gantt-today-line" style={{ left: `${todayPercent}%` }} />
+                    <div className="gantt-today-line" style={{ left: `${todayPx}px` }} />
                   )}
                   {/* Полоса задачи */}
                   <div
