@@ -55,4 +55,9 @@ export const downloadFile = (taskId, fileId) =>
   api.get(`/tasks/${taskId}/attachments/${fileId}/download`, { responseType: 'blob' });
 export const deleteFile = (taskId, fileId) => api.delete(`/tasks/${taskId}/attachments/${fileId}`);
 
+// Team
+export const getTeam = () => api.get('/team');
+export const addTeamMember = (email) => api.post('/team', { email });
+export const removeTeamMember = (memberId) => api.delete(`/team/${memberId}`);
+
 export default api;
