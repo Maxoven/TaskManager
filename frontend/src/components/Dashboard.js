@@ -4,7 +4,7 @@ import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import {
   getProjects, createProject, updateProject, deleteProject,
   getPendingInvitations, respondToInvitation, reorderProjects, getMyTasks,
-  getTeam, addTeamMember, removeTeamMember
+  getTeam, addTeamMember, removeTeamMember, getTeamInvitations, respondToTeamInvitation
 } from '../services/api';
 import './Dashboard.css';
 
@@ -13,6 +13,7 @@ function Dashboard({ user, onLogout }) {
   const [invitations, setInvitations] = useState([]);
   const [myTasks, setMyTasks] = useState([]);
   const [team, setTeam] = useState([]);
+  const [teamInvitations, setTeamInvitations] = useState([]);
   const [activeTab, setActiveTab] = useState('projects');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editProject, setEditProject] = useState(null);
@@ -25,19 +26,21 @@ function Dashboard({ user, onLogout }) {
   const [teamError, setTeamError] = useState('');
   const [teamSuccess, setTeamSuccess] = useState('');
   const [teamLoading, setTeamLoading] = useState(false);
+  const [myTasksTab, setMyTasksTab] = useState('active');
   const navigate = useNavigate();
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
-      const [projectsRes, invitationsRes, tasksRes, teamRes] = await Promise.all([
-        getProjects(), getPendingInvitations(), getMyTasks(), getTeam()
+      const [projectsRes, invitationsRes, tasksRes, teamRes, teamInvRes] = await Promise.all([
+        getProjects(), getPendingInvitations(), getMyTasks(), getTeam(), getTeamInvitations()
       ]);
       setProjects(projectsRes.data);
       setInvitations(invitationsRes.data);
       setMyTasks(tasksRes.data);
       setTeam(teamRes.data);
+      setTeamInvitations(teamInvRes.data);
     } catch (error) {
       console.error('Ошибка загрузки данных:', error);
     } finally {
@@ -94,8 +97,17 @@ function Dashboard({ user, onLogout }) {
     }
   };
 
+  const handleTeamInvitationResponse = async (ownerId, action) => {
+    try {
+      await respondToTeamInvitation(ownerId, action);
+      loadData();
+    } catch (error) {
+      console.error('Ошибка ответа на приглашение в команду:', error);
+    }
+  };
+
   const handleStartSort = () => {
-    setSortedProjects([...projects]);
+    setSortedProjects(projects.filter(p => p.owner_id === user?.id));
     setSortMode(true);
   };
 
@@ -162,9 +174,10 @@ function Dashboard({ user, onLogout }) {
         </div>
       </header>
 
+      {/* Приглашения в проекты */}
       {invitations.length > 0 && (
         <div className="invitations-section">
-          <h2>Приглашения</h2>
+          <h2>Приглашения в проекты</h2>
           <div className="invitations-list">
             {invitations.map(inv => (
               <div key={inv.id} className="invitation-card">
@@ -176,6 +189,27 @@ function Dashboard({ user, onLogout }) {
                 <div className="invitation-actions">
                   <button onClick={() => handleInvitationResponse(inv.id, 'approve')} className="btn-success">Принять</button>
                   <button onClick={() => handleInvitationResponse(inv.id, 'reject')} className="btn-danger">Отклонить</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Приглашения в команду */}
+      {teamInvitations.length > 0 && (
+        <div className="invitations-section">
+          <h2>Приглашения в команду</h2>
+          <div className="invitations-list">
+            {teamInvitations.map(inv => (
+              <div key={inv.owner_id} className="invitation-card team-invitation-card">
+                <div>
+                  <h3>👥 {inv.owner_name} приглашает вас в свою команду</h3>
+                  <p>Вы получите доступ ко всем проектам {inv.owner_name}</p>
+                </div>
+                <div className="invitation-actions">
+                  <button onClick={() => handleTeamInvitationResponse(inv.owner_id, 'approve')} className="btn-success">Принять</button>
+                  <button onClick={() => handleTeamInvitationResponse(inv.owner_id, 'reject')} className="btn-danger">Отклонить</button>
                 </div>
               </div>
             ))}
@@ -242,80 +276,132 @@ function Dashboard({ user, onLogout }) {
               <div className="section-header">
                 <h2>Мои проекты</h2>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  {projects.length > 1 && (
+                  {projects.filter(p => p.owner_id === user?.id).length > 1 && (
                     <button onClick={handleStartSort} className="btn-secondary">⇅ Упорядочить</button>
                   )}
                   <button onClick={() => setShowCreateModal(true)} className="btn-primary">+ Создать проект</button>
                 </div>
               </div>
-              {projects.length === 0 ? (
-                <div className="empty-state">
-                  <p>У вас пока нет проектов</p>
-                  <p>Создайте первый проект, чтобы начать работу</p>
-                </div>
-              ) : (
-                <div className="projects-grid">
-                  {projects.map((project) => (
-                    <div key={project.id} className="project-card" onClick={() => navigate(`/project/${project.id}`)}>
-                      <div className="project-card-header">
-                        <h3>{project.name}</h3>
-                        {project.role === 'owner' && (
+
+              {/* Мои проекты */}
+              {(() => {
+                const myProjects = projects.filter(p => p.owner_id === user?.id);
+                return myProjects.length === 0 ? (
+                  <div className="empty-state"><p>У вас пока нет проектов</p><p>Создайте первый проект, чтобы начать работу</p></div>
+                ) : (
+                  <div className="projects-grid">
+                    {myProjects.map((project) => (
+                      <div key={project.id} className="project-card" onClick={() => navigate(`/project/${project.id}`)}>
+                        <div className="project-card-header">
+                          <h3>{project.name}</h3>
                           <div className="project-card-actions">
                             <button onClick={(e) => handleEditProject(project, e)} className="btn-icon-sm" title="Редактировать">✏️</button>
                             <button onClick={(e) => handleDeleteProject(project.id, project.name, e)} className="btn-icon-sm btn-danger-sm" title="Удалить">🗑️</button>
                           </div>
-                        )}
+                        </div>
+                        <p>{project.description}</p>
+                        <div className="project-meta">
+                          <span className="role-badge owner">Владелец</span>
+                        </div>
                       </div>
-                      <p>{project.description}</p>
-                      <div className="project-meta">
-                        <span className={`role-badge ${project.role}`}>
-                          {project.role === 'owner' ? 'Владелец' : 'Участник'}
-                        </span>
-                        <span className="project-owner">{project.owner_name}</span>
-                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Проекты команды — группируем по владельцу */}
+              {(() => {
+                const memberProjects = projects.filter(p => p.owner_id !== user?.id);
+                if (memberProjects.length === 0) return null;
+
+                // Группируем по owner_id
+                const byOwner = {};
+                memberProjects.forEach(p => {
+                  if (!byOwner[p.owner_id]) byOwner[p.owner_id] = { name: p.owner_name, projects: [] };
+                  byOwner[p.owner_id].projects.push(p);
+                });
+
+                return Object.entries(byOwner).map(([ownerId, group]) => (
+                  <div key={ownerId} className="owner-group">
+                    <h3 className="owner-group-title">👥 Проекты — {group.name}</h3>
+                    <div className="projects-grid">
+                      {group.projects.map(project => (
+                        <div key={project.id} className="project-card project-card-member" onClick={() => navigate(`/project/${project.id}`)}>
+                          <div className="project-card-header">
+                            <h3>{project.name}</h3>
+                          </div>
+                          <p>{project.description}</p>
+                          <div className="project-meta">
+                            <span className="role-badge member">Участник</span>
+                            <span className="project-owner">{project.owner_name}</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
+                ));
+              })()}
             </>
           )}
         </div>
       )}
 
-      {activeTab === 'mytasks' && (
-        <div className="mytasks-section">
-          <h2>Мои задачи</h2>
-          {myTasks.length === 0 ? (
-            <div className="empty-state"><p>Нет задач назначенных вам</p></div>
-          ) : (
-            <div className="mytasks-list">
-              {myTasks.map(task => {
-                const deadlineClass = getTaskDeadlineClass(task);
-                return (
-                  <div key={task.id} className={`mytask-card ${deadlineClass}`} onClick={() => navigate(`/project/${task.project_id}`)}>
-                    <div className="mytask-header">
-                      <span className="mytask-project">{task.project_name}</span>
-                      <span className="mytask-status">{task.status_name}</span>
-                    </div>
-                    <h3 className="mytask-title">{task.title}</h3>
-                    {task.description && <p className="mytask-desc">{task.description}</p>}
-                    <div className="mytask-footer">
-                      {task.end_date && (
-                        <span className={`mytask-deadline ${deadlineClass}`}>
-                          📅 Дедлайн: {new Date(task.end_date).toLocaleDateString('ru-RU')}
-                          {deadlineClass === 'overdue' && ' ⚠️ Просрочено'}
-                          {deadlineClass === 'due-soon' && ' ⏰ Скоро'}
-                        </span>
-                      )}
-                      {task.has_report && <span className="mytask-report-badge">✅ Отчёт сдан</span>}
-                    </div>
-                  </div>
-                );
-              })}
+      {activeTab === 'mytasks' && (() => {
+        const isDone = (t) => {
+          const s = (t.status_name || '').toLowerCase();
+          return s === 'готово' || s === 'done' || s === 'выполнено';
+        };
+        const activeTasks = myTasks.filter(t => !isDone(t));
+        const doneTasks = myTasks.filter(t => isDone(t));
+        const shownTasks = myTasksTab === 'active' ? activeTasks : doneTasks;
+        const overdueCount = activeTasks.filter(t => getTaskDeadlineClass(t) === 'overdue').length;
+
+        return (
+          <div className="mytasks-section">
+            <div className="mytasks-subtabs">
+              <button className={`subtab-btn ${myTasksTab === 'active' ? 'active' : ''}`} onClick={() => setMyTasksTab('active')}>
+                Активные {overdueCount > 0 && <span className="badge-count">{overdueCount}</span>}
+              </button>
+              <button className={`subtab-btn ${myTasksTab === 'done' ? 'active' : ''}`} onClick={() => setMyTasksTab('done')}>
+                Выполненные {doneTasks.length > 0 && <span className="badge-done">{doneTasks.length}</span>}
+              </button>
             </div>
-          )}
-        </div>
-      )}
+            {shownTasks.length === 0 ? (
+              <div className="empty-state">
+                <p>{myTasksTab === 'active' ? 'Нет активных задач' : 'Нет выполненных задач'}</p>
+              </div>
+            ) : (
+              <div className="mytasks-list">
+                {shownTasks.map(task => {
+                  const deadlineClass = myTasksTab === 'active' ? getTaskDeadlineClass(task) : '';
+                  return (
+                    <div key={task.id} className={`mytask-card ${deadlineClass} ${myTasksTab === 'done' ? 'done' : ''}`} onClick={() => navigate(`/project/${task.project_id}`)}>
+                      <div className="mytask-header">
+                        <span className="mytask-project">{task.project_name}</span>
+                        <span className={`mytask-status ${myTasksTab === 'done' ? 'done-status' : ''}`}>{task.status_name}</span>
+                      </div>
+                      <h3 className="mytask-title">{task.title}</h3>
+                      {task.description && <p className="mytask-desc">{task.description}</p>}
+                      <div className="mytask-footer">
+                        {task.end_date && (
+                          <span className={`mytask-deadline ${deadlineClass}`}>
+                            📅 Дедлайн: {new Date(task.end_date).toLocaleDateString('ru-RU')}
+                            {deadlineClass === 'overdue' && ' ⚠️ Просрочено'}
+                            {deadlineClass === 'due-soon' && ' ⏰ Скоро'}
+                          </span>
+                        )}
+                        {task.has_report && <span className="mytask-report-badge">✅ Отчёт сдан</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {activeTab === 'mytasks_done' && null}
 
       {activeTab === 'team' && (
         <div className="team-section">

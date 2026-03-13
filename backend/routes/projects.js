@@ -5,17 +5,17 @@ const authMiddleware = require('../middleware/auth');
 const router = express.Router();
 router.use(authMiddleware);
 
-// Получить все проекты пользователя
+// Получить все проекты пользователя — сгруппированные по владельцу
 router.get('/', async (req, res) => {
   try {
     const [rows] = await pool.query(`
-      SELECT DISTINCT p.*, u.name as owner_name,
+      SELECT DISTINCT p.*, u.name as owner_name, u.id as owner_id,
       CASE WHEN p.owner_id = ? THEN 'owner' ELSE 'member' END as role
       FROM projects p
       LEFT JOIN users u ON p.owner_id = u.id
       LEFT JOIN project_members pm ON p.id = pm.project_id
       WHERE p.owner_id = ? OR (pm.user_id = ? AND pm.status = 'approved')
-      ORDER BY p.sort_order ASC, p.created_at DESC
+      ORDER BY p.owner_id ASC, p.sort_order ASC, p.created_at DESC
     `, [req.userId, req.userId, req.userId]);
     res.json(rows);
   } catch (error) {

@@ -1,72 +1,103 @@
-import React, { useState, useRef } from 'react';
-import { format, addDays, addMonths, subDays, subMonths, differenceInDays, startOfDay, eachDayOfInterval, isToday, isWeekend } from 'date-fns';
+import React, { useState, useRef, useEffect } from 'react';
+import { format, addDays, subDays, differenceInDays, startOfDay, eachMonthOfInterval, endOfMonth } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import './GanttChart.css';
 
-const PERIOD_OPTIONS = [
-  { label: '1 мес', days: 30 },
-  { label: '3 мес', days: 90 },
-  { label: '6 мес', days: 180 },
-  { label: '1 год', days: 365 },
-];
+const PERIOD_DAYS = 365;
+const DAY_PX = 16;         // пикселей на день
+const ROW_H = 44;          // высота строки
+const SIDEBAR_W = 200;     // ширина колонки задач
+const HEADER_H = 36;       // высота шапки
 
 function GanttChart({ tasks, onTaskClick, members }) {
   const today = startOfDay(new Date());
-  const [viewStart, setViewStart] = useState(subDays(today, 15));
-  const [periodDays, setPeriodDays] = useState(90);
-  const chartRef = useRef(null);
+  const [viewStart] = useState(subDays(today, 20));
+  const [filterAssignee, setFilterAssignee] = useState('all');
+  const scrollRef = useRef(null);
 
-  const tasksWithDates = tasks.filter(t => t.start_date && t.end_date);
-  const viewEnd = addDays(viewStart, periodDays - 1);
-  const days = eachDayOfInterval({ start: viewStart, end: viewEnd });
-  const totalDays = periodDays;
+  const viewEnd = addDays(viewStart, PERIOD_DAYS - 1);
+  const totalWidth = PERIOD_DAYS * DAY_PX;
 
-  // Навигация
-  const goBack = () => setViewStart(prev => subDays(prev, Math.round(periodDays / 3)));
-  const goForward = () => setViewStart(prev => addDays(prev, Math.round(periodDays / 3)));
-  const goToday = () => setViewStart(subDays(today, Math.round(periodDays / 6)));
+  // Скролл к сегодняшнему дню при загрузке
+  useEffect(() => {
+    if (scrollRef.current) {
+      const todayPx = differenceInDays(today, viewStart) * DAY_PX;
+      scrollRef.current.scrollLeft = Math.max(0, todayPx - 100);
+    }
+  }, []);
 
-  // Позиция задачи — в пикселях (28px на день)
-  const DAY_WIDTH = 28;
-  const getTaskPosition = (task) => {
-    const taskStart = startOfDay(new Date(task.start_date));
-    const taskEnd = startOfDay(new Date(task.end_date));
-    const startOffset = differenceInDays(taskStart, viewStart);
-    const duration = differenceInDays(taskEnd, taskStart) + 1;
-    const left = startOffset * DAY_WIDTH;
-    const width = duration * DAY_WIDTH;
-    const totalWidth = totalDays * DAY_WIDTH;
-    const isOutOfView = left + width < 0 || left > totalWidth;
-    const clampedLeft = Math.max(0, left);
-    const clampedWidth = Math.max(4, Math.min(width, totalWidth - clampedLeft));
-    return { left: `${clampedLeft}px`, width: `${clampedWidth}px`, isOutOfView };
+  const tasksWithDates = tasks
+    .filter(t => t.start_date && t.end_date)
+    .filter(t => {
+      if (filterAssignee === 'all') return true;
+      return t.assignees && t.assignees.some(a => a.id === parseInt(filterAssignee));
+    });
+
+  // Позиция в пикселях
+  const dateToPx = (date) => differenceInDays(startOfDay(new Date(date)), viewStart) * DAY_PX;
+
+  const getTaskBar = (task) => {
+    const left = dateToPx(task.start_date);
+    const right = dateToPx(task.end_date) + DAY_PX;
+    return { left, width: Math.max(4, right - left) };
+  };
+
+  const isTaskDone = (task) => {
+    const s = (task.status_name || '').toLowerCase();
+    return s === 'готово' || s === 'done' || s === 'выполнено';
   };
 
   const getTaskColor = (task) => {
+    if (isTaskDone(task)) return '#66bb6a';
+    if (task.has_report) return '#26a69a';
     if (task.end_date && new Date(task.end_date) < today) return '#ef5350';
-    if (task.has_report) return '#66bb6a';
     return '#42a5f5';
   };
 
-  // Позиция линии "сегодня" в пикселях
-  const todayOffset = differenceInDays(today, viewStart);
-  const todayPx = todayOffset * DAY_WIDTH;
-  const showTodayLine = todayOffset >= 0 && todayOffset <= totalDays;
+  // Месяцы для шапки
+  const months = eachMonthOfInterval({ start: viewStart, end: viewEnd });
 
-  // Группировка дней по месяцам для заголовка
-  const months = [];
-  let currentMonth = null;
-  days.forEach((day, i) => {
-    const monthKey = format(day, 'LLLL yyyy', { locale: ru });
-    if (monthKey !== currentMonth) {
-      months.push({ label: monthKey, startIndex: i, count: 1 });
-      currentMonth = monthKey;
-    } else {
-      months[months.length - 1].count++;
-    }
-  });
+  // Линия сегодня
+  const todayPx = dateToPx(today);
 
-  if (tasksWithDates.length === 0) {
+  // Стрелки связей
+  const renderArrows = () => {
+    const arrows = [];
+    tasksWithDates.forEach((task, toIndex) => {
+      if (!task.dependencies || task.dependencies.length === 0) return;
+      task.dependencies.forEach(dep => {
+        const fromTask = tasksWithDates.find(t => t.id === dep.depends_on_task_id);
+        if (!fromTask) return;
+        const fromIndex = tasksWithDates.indexOf(fromTask);
+        const fromBar = getTaskBar(fromTask);
+        const toBar = getTaskBar(task);
+
+        // Координаты: конец predecessor → начало successor
+        const x1 = fromBar.left + fromBar.width;
+        const y1 = fromIndex * ROW_H + ROW_H / 2;
+        const x2 = toBar.left;
+        const y2 = toIndex * ROW_H + ROW_H / 2;
+
+        const midX = x1 + Math.max(12, (x2 - x1) / 2);
+
+        arrows.push(
+          <g key={`${task.id}-${dep.depends_on_task_id}`}>
+            <path
+              d={`M ${x1} ${y1} H ${midX} V ${y2} H ${x2}`}
+              fill="none"
+              stroke="#aaa"
+              strokeWidth="1.5"
+              strokeDasharray="4 2"
+              markerEnd="url(#arrow)"
+            />
+          </g>
+        );
+      });
+    });
+    return arrows;
+  };
+
+  if (tasks.filter(t => t.start_date && t.end_date).length === 0) {
     return (
       <div className="gantt-empty">
         <p>Нет задач с установленными датами</p>
@@ -75,129 +106,128 @@ function GanttChart({ tasks, onTaskClick, members }) {
     );
   }
 
+  const bodyHeight = tasksWithDates.length * ROW_H;
+
   return (
     <div className="gantt-container">
       {/* Панель управления */}
       <div className="gantt-controls">
         <div className="gantt-nav">
-          <button className="gantt-nav-btn" onClick={goBack} title="Назад">◀</button>
-          <button className="gantt-nav-btn gantt-today-btn" onClick={goToday}>Сегодня</button>
-          <button className="gantt-nav-btn" onClick={goForward} title="Вперёд">▶</button>
           <span className="gantt-period-label">
             {format(viewStart, 'd MMM yyyy', { locale: ru })} — {format(viewEnd, 'd MMM yyyy', { locale: ru })}
           </span>
         </div>
 
-        <div className="gantt-period-selector">
-          {PERIOD_OPTIONS.map(opt => (
-            <button
-              key={opt.days}
-              className={`period-btn ${periodDays === opt.days ? 'active' : ''}`}
-              onClick={() => setPeriodDays(opt.days)}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="gantt-filter">
+          <select className="gantt-assignee-filter" value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)}>
+            <option value="all">Все исполнители</option>
+            {members && members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
         </div>
 
         <div className="gantt-legend">
           <div className="legend-item"><span className="legend-color" style={{ background: '#42a5f5' }}></span><span>В процессе</span></div>
-          <div className="legend-item"><span className="legend-color" style={{ background: '#66bb6a' }}></span><span>Отчёт сдан</span></div>
+          <div className="legend-item"><span className="legend-color" style={{ background: '#66bb6a' }}></span><span>Выполнено</span></div>
+          <div className="legend-item"><span className="legend-color" style={{ background: '#26a69a' }}></span><span>Отчёт сдан</span></div>
           <div className="legend-item"><span className="legend-color" style={{ background: '#ef5350' }}></span><span>Просрочена</span></div>
         </div>
       </div>
 
-      <div className="gantt-chart" ref={chartRef}>
-        {/* Заголовок — месяцы */}
-        <div className="gantt-header" style={{ minWidth: `${totalDays * 28 + 200}px` }}>
-          <div className="gantt-sidebar-header">Задача</div>
-          <div className="gantt-timeline-header" style={{ minWidth: `${totalDays * 28}px` }}>
-            <div className="gantt-months-row">
-              {months.map((m, i) => (
-                <div key={i} className="gantt-month-header" style={{ width: `${m.count * 28}px`, minWidth: `${m.count * 28}px`, flexShrink: 0 }}>
-                  {m.label}
-                </div>
-              ))}
-            </div>
-            <div className="gantt-days-row">
-              {days.map((day, index) => (
-                <div
-                  key={index}
-                  className={`gantt-day-header ${isToday(day) ? 'today' : ''} ${isWeekend(day) ? 'weekend' : ''}`}
-                  style={{ width: '28px', minWidth: '28px', flexShrink: 0 }}
-                >
-                  {day.getDate()}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+      {/* Основная таблица */}
+      <div className="gantt-chart">
+        <div className="gantt-layout">
 
-        {/* Строки задач */}
-        <div className="gantt-body" style={{ minWidth: `${totalDays * 28 + 200}px` }}>
-          {tasksWithDates.map((task) => {
-            const pos = getTaskPosition(task);
-            if (pos.isOutOfView) return (
-              <div key={task.id} className="gantt-row gantt-row-hidden">
-                <div className="gantt-sidebar">
-                  <div className="gantt-task-info">
-                    <div className="gantt-task-title">{task.title}</div>
-                  </div>
-                </div>
-                <div className="gantt-timeline">
-                  <div className="gantt-out-of-view">← вне периода →</div>
+          {/* Фиксированная колонка с названиями */}
+          <div className="gantt-sidebar-col">
+            <div className="gantt-sidebar-header">Задача</div>
+            {tasksWithDates.length === 0 ? null : tasksWithDates.map(task => (
+              <div key={task.id} className="gantt-sidebar">
+                <div className="gantt-task-info">
+                  <div className="gantt-task-title">{task.title}</div>
+                  {task.assignees && task.assignees.length > 0 && (
+                    <div className="gantt-task-assignees">
+                      {task.assignees.map(a => (
+                        <span key={a.id} className="gantt-assignee-badge" title={a.name}>
+                          {a.name.charAt(0)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
-            );
+            ))}
+          </div>
 
-            return (
-              <div key={task.id} className="gantt-row">
-                <div className="gantt-sidebar">
-                  <div className="gantt-task-info">
-                    <div className="gantt-task-title">{task.title}</div>
-                    {task.assignees && task.assignees.length > 0 && (
-                      <div className="gantt-task-assignees">
-                        {task.assignees.map(a => (
-                          <span key={a.id} className="gantt-assignee-badge" title={a.name}>
-                            {a.name.charAt(0)}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+          {/* Скроллируемая часть */}
+          <div className="gantt-scroll-area" ref={scrollRef}>
+            {/* Шапка месяцев */}
+            <div className="gantt-timeline-header" style={{ width: totalWidth }}>
+              {months.map((monthStart, i) => {
+                const mLeftPx = Math.max(0, dateToPx(monthStart));
+                const mEnd = endOfMonth(monthStart);
+                const mEndPx = Math.min(totalWidth, dateToPx(mEnd) + DAY_PX);
+                return (
+                  <div key={i} className="gantt-month-header" style={{ left: mLeftPx, width: mEndPx - mLeftPx }}>
+                    {format(monthStart, 'LLLL yyyy', { locale: ru })}
                   </div>
-                </div>
-                <div className="gantt-timeline" style={{ position: 'relative', minWidth: `${totalDays * 28}px` }}>
-                  {/* Сетка — через абсолютное позиционирование */}
-                  {days.map((day, index) => (
-                    <div
-                      key={index}
-                      className={`gantt-day-cell ${isWeekend(day) ? 'weekend' : ''} ${isToday(day) ? 'today-cell' : ''}`}
-                      style={{
-                        position: 'absolute',
-                        left: `${index * 28}px`,
-                        width: '28px',
-                        top: 0,
-                        bottom: 0
-                      }}
-                    />
-                  ))}
-                  {/* Линия сегодня */}
-                  {showTodayLine && (
-                    <div className="gantt-today-line" style={{ left: `${todayPx}px` }} />
-                  )}
-                  {/* Полоса задачи */}
+                );
+              })}
+            </div>
+
+            {/* Тело: строки + SVG стрелки */}
+            <div className="gantt-body" style={{ width: totalWidth, height: bodyHeight, position: 'relative' }}>
+
+              {/* Фоновые строки */}
+              {tasksWithDates.map((task, i) => (
+                <div key={task.id} className="gantt-row-bg" style={{ top: i * ROW_H, width: totalWidth }} />
+              ))}
+
+              {/* Вертикальные линии месяцев */}
+              {months.map((m, i) => {
+                const px = dateToPx(m);
+                if (px < 0 || px > totalWidth) return null;
+                return <div key={i} className="gantt-month-line" style={{ left: px }} />;
+              })}
+
+              {/* Линия сегодня */}
+              {todayPx >= 0 && todayPx <= totalWidth && (
+                <div className="gantt-today-line" style={{ left: todayPx }} />
+              )}
+
+              {/* SVG стрелки связей */}
+              <svg
+                style={{ position: 'absolute', top: 0, left: 0, width: totalWidth, height: bodyHeight, pointerEvents: 'none', overflow: 'visible' }}
+              >
+                <defs>
+                  <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                    <path d="M 0 0 L 6 3 L 0 6 z" fill="#aaa" />
+                  </marker>
+                </defs>
+                {renderArrows()}
+              </svg>
+
+              {/* Полосы задач */}
+              {tasksWithDates.map((task, i) => {
+                const bar = getTaskBar(task);
+                return (
                   <div
+                    key={task.id}
                     className="gantt-task-bar"
-                    style={{ left: pos.left, width: pos.width, background: getTaskColor(task) }}
+                    style={{
+                      left: bar.left,
+                      width: bar.width,
+                      top: i * ROW_H + 6,
+                      background: getTaskColor(task)
+                    }}
                     onClick={() => onTaskClick(task)}
                     title={`${task.title}\n${format(new Date(task.start_date), 'dd.MM.yyyy')} – ${format(new Date(task.end_date), 'dd.MM.yyyy')}`}
                   >
                     <span className="gantt-task-bar-label">{task.title}</span>
                   </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
     </div>

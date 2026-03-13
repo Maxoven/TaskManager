@@ -187,7 +187,7 @@ function KanbanBoard({ user, onLogout }) {
         <div className="members-list">
           {members.map(member => (
             <div key={member.id} className="member-badge">
-              {member.name} {member.is_owner == 1 && '👑'}
+              {member.name} {member.is_owner && '👑'}
               {member.status === 'pending' && ' (ожидает)'}
             </div>
           ))}
@@ -296,7 +296,10 @@ function KanbanBoard({ user, onLogout }) {
         </DragDropContext>
       ) : (
         <GanttChart
-          tasks={tasks}
+          tasks={tasks.map(t => ({
+            ...t,
+            status_name: statuses.find(s => s.id === t.status_id)?.name || ''
+          }))}
           members={approvedMembers}
           onTaskClick={(task) => { setSelectedTask(task); setShowTaskModal(true); }}
         />

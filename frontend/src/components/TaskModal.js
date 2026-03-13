@@ -22,8 +22,8 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttac
       setFormData({
         title: task.title || '',
         description: task.description || '',
-        startDate: task.start_date || '',
-        endDate: task.end_date || '',
+        startDate: (task.start_date || "").split("T")[0],
+        endDate: (task.end_date || "").split("T")[0],
         assigneeIds: task.assignees?.map(a => a.id) || [],
         dependencies: task.dependencies?.map(d => ({
           depends_on_task_id: d.depends_on_task_id,

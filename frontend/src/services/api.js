@@ -59,5 +59,7 @@ export const deleteFile = (taskId, fileId) => api.delete(`/tasks/${taskId}/attac
 export const getTeam = () => api.get('/team');
 export const addTeamMember = (email) => api.post('/team', { email });
 export const removeTeamMember = (memberId) => api.delete(`/team/${memberId}`);
+export const getTeamInvitations = () => api.get('/team/invitations');
+export const respondToTeamInvitation = (ownerId, action) => api.patch(`/team/invitations/${ownerId}/${action}`);
 
 export default api;

@@ -207,3 +207,43 @@
 .team-member-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .team-member-name { font-size: 15px; font-weight: 500; color: #333; }
 .team-member-email { font-size: 13px; color: #888; }
+
+/* Подвкладки Мои задачи */
+.mytasks-subtabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 2px solid #f0f0f0;
+}
+.subtab-btn {
+  padding: 8px 16px; border: none; background: none;
+  cursor: pointer; font-size: 14px; color: #666;
+  border-bottom: 2px solid transparent; margin-bottom: -2px;
+  display: flex; align-items: center; gap: 6px; transition: all 0.2s;
+}
+.subtab-btn:hover { color: #25b84c; }
+.subtab-btn.active { color: #25b84c; border-bottom-color: #25b84c; font-weight: 600; }
+.badge-done {
+  background: #25b84c; color: white;
+  border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: bold;
+}
+
+/* Выполненные задачи */
+.mytask-card.done { border-left-color: #bdbdbd; opacity: 0.8; }
+.mytask-status.done-status { background: #e8f5e9; color: #25b84c; }
+
+/* Группа проектов по владельцу */
+.owner-group { margin-top: 32px; }
+.owner-group-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e8e8e8;
+}
+.project-card-member { border-left: 3px solid #7b1fa2; }
+
+/* Приглашение в команду */
+.team-invitation-card { background: #f3e5f5; border-color: #7b1fa2; }
+.team-invitation-card h3 { color: #4a148c; }
