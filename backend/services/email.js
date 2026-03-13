@@ -110,10 +110,32 @@ async function sendOverdueNotification(toEmail, creatorName, taskTitle, projectN
   });
 }
 
+
+// ─── Верификация email ────────────────────────────────────────────────────────
+async function sendEmailVerification(toEmail, userName, verifyToken) {
+  const link = `${FRONTEND_URL}/verify-email/${verifyToken}`;
+  await transporter.sendMail({
+    from: FROM,
+    to: toEmail,
+    subject: 'Подтвердите email — Task Manager',
+    html: `
+      <div style="font-family:sans-serif;max-width:500px;margin:auto">
+        <h2 style="color:#25b84c">Добро пожаловать, ${userName}!</h2>
+        <p>Для завершения регистрации подтвердите ваш email:</p>
+        <a href="${link}" style="display:inline-block;padding:12px 24px;background:#25b84c;color:#fff;text-decoration:none;border-radius:6px;margin:16px 0">
+          Подтвердить email
+        </a>
+        <p style="color:#888;font-size:13px">Ссылка действует <strong>24 часа</strong>. Если вы не регистрировались — проигнорируйте это письмо.</p>
+      </div>
+    `
+  });
+}
+
 module.exports = {
   sendPasswordReset,
   sendTaskAssigned,
   sendDeadlineWarning,
   sendReportRequest,
-  sendOverdueNotification
+  sendOverdueNotification,
+  sendEmailVerification
 };

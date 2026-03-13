@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { login } from '../services/api';
+import { login, resendVerification } from '../services/api';
 import './Auth.css';
 
 function Login({ onLogin }) {
@@ -8,18 +8,33 @@ function Login({ onLogin }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [resendMsg, setResendMsg] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setNeedsVerification(false);
     setLoading(true);
     try {
       const response = await login({ email, password });
       onLogin(response.data.user, response.data.token);
     } catch (err) {
+      if (err.response?.data?.needsVerification) {
+        setNeedsVerification(true);
+      }
       setError(err.response?.data?.error || 'Ошибка входа');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    try {
+      await resendVerification(email);
+      setResendMsg('Письмо отправлено! Проверьте почту.');
+    } catch {
+      setResendMsg('Не удалось отправить письмо');
     }
   };
 
@@ -37,6 +52,15 @@ function Login({ onLogin }) {
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="Введите пароль" />
           </div>
           {error && <div className="error">{error}</div>}
+          {needsVerification && (
+            <div style={{ marginTop: 8, fontSize: 13 }}>
+              <span style={{ color: '#888' }}>Не получили письмо? </span>
+              <button type="button" onClick={handleResend} style={{ background: 'none', border: 'none', color: '#25b84c', cursor: 'pointer', padding: 0, fontSize: 13, textDecoration: 'underline' }}>
+                Отправить повторно
+              </button>
+              {resendMsg && <span style={{ color: '#25b84c', marginLeft: 8 }}>{resendMsg}</span>}
+            </div>
+          )}
           <button type="submit" disabled={loading} className="btn-primary">
             {loading ? 'Вход...' : 'Войти'}
           </button>

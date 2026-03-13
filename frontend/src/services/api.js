@@ -62,4 +62,8 @@ export const removeTeamMember = (memberId) => api.delete(`/team/${memberId}`);
 export const getTeamInvitations = () => api.get('/team/invitations');
 export const respondToTeamInvitation = (ownerId, action) => api.patch(`/team/invitations/${ownerId}/${action}`);
 
+// Email verification
+export const verifyEmail = (token) => api.get(`/auth/verify-email/${token}`);
+export const resendVerification = (email) => api.post('/auth/resend-verification', { email });
+
 export default api;

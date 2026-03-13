@@ -20,6 +20,7 @@ function KanbanBoard({ user, onLogout }) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [editForm, setEditForm] = useState({ name: '', description: '' });
+  const [showFullDesc, setShowFullDesc] = useState(false);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('kanban');
   // Фильтры
@@ -167,7 +168,19 @@ function KanbanBoard({ user, onLogout }) {
                 >✏️</button>
               )}
             </div>
-            <p className="project-desc">{project?.description}</p>
+            <p className="project-desc">
+              {project?.description && project.description.length > 100 ? (
+                <>
+                  {showFullDesc ? project.description : project.description.slice(0, 100) + '...'}
+                  <button
+                    onClick={() => setShowFullDesc(!showFullDesc)}
+                    style={{ background: 'none', border: 'none', color: '#25b84c', cursor: 'pointer', padding: '0 4px', fontSize: 13 }}
+                  >
+                    {showFullDesc ? 'Свернуть' : 'Читать далее'}
+                  </button>
+                </>
+              ) : project?.description}
+            </p>
           </div>
         </div>
         <div className="header-actions">
