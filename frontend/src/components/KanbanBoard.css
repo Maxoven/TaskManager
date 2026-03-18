@@ -336,3 +336,14 @@
   gap: 8px;
 }
 .project-title-row h1 { margin: 0; }
+
+/* Source теги и кнопка удаления участника */
+.source-tag { font-size: 12px; margin-left: 2px; cursor: default; }
+.member-remove-btn {
+  background: none; border: none; color: #ccc;
+  cursor: pointer; font-size: 11px; padding: 0 2px;
+  line-height: 1; transition: color 0.2s;
+}
+.member-remove-btn:hover { color: #ef5350; }
+.member-badge-pending { opacity: 0.6; border-style: dashed; }
+.pending-tag { font-size: 11px; color: #aaa; margin-left: 4px; }

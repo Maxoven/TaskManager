@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
-import { getProject, createTask, updateTask, deleteTask, inviteToProject, updateProject, getTaskReports } from '../services/api';
+import { getProject, createTask, updateTask, deleteTask, inviteToProject, updateProject, getTaskReports, removeProjectMember } from '../services/api';
 import TaskModal from './TaskModal';
 import GanttChart from './GanttChart';
 import './KanbanBoard.css';
@@ -139,8 +139,18 @@ function KanbanBoard({ user, onLogout }) {
     return filtered;
   };
 
-  const approvedMembers = members.filter(m => m.status === 'approved' || m.is_owner);
+  const approvedMembers = members.filter(m => m.status === 'approved' || m.is_owner == 1);
   const isOwner = project?.owner_id === user?.id;
+
+  const handleRemoveMember = async (userId, userName) => {
+    if (!window.confirm(`Удалить ${userName} из проекта?`)) return;
+    try {
+      await removeProjectMember(id, userId);
+      loadProject();
+    } catch (error) {
+      console.error('Ошибка удаления участника:', error);
+    }
+  };
 
   const getDeadlineClass = (task) => {
     if (!task.end_date) return '';
@@ -198,10 +208,25 @@ function KanbanBoard({ user, onLogout }) {
       <div className="team-members">
         <h3>Команда:</h3>
         <div className="members-list">
-          {members.map(member => (
+          {members.filter(m => m.status === 'approved' || m.is_owner == 1).map(member => (
             <div key={member.id} className="member-badge">
-              {member.name} {member.is_owner && '👑'}
-              {member.status === 'pending' && ' (ожидает)'}
+              <span>{member.name}</span>
+              {member.is_owner == 1 && <span>👑</span>}
+              {member.source === 'team' && <span className="source-tag source-team" title="Добавлен через команду">👥</span>}
+              {member.source === 'project' && <span className="source-tag source-project" title="Приглашён в проект">✉️</span>}
+              {isOwner && member.is_owner != 1 && (
+                <button
+                  className="member-remove-btn"
+                  onClick={() => handleRemoveMember(member.id, member.name)}
+                  title="Удалить из проекта"
+                >✕</button>
+              )}
+            </div>
+          ))}
+          {members.filter(m => m.status === 'pending').map(member => (
+            <div key={member.id} className="member-badge member-badge-pending">
+              <span>{member.name}</span>
+              <span className="pending-tag">ожидает</span>
             </div>
           ))}
         </div>

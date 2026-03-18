@@ -1,18 +1,19 @@
 const express = require('express');
 const pool = require('../config/database');
 const authMiddleware = require('../middleware/auth');
+const { sendTeamInvitation } = require('../services/email');
 
 const router = express.Router();
 router.use(authMiddleware);
 
-// Получить мою команду (кого я добавил, статус approved)
+// Получить мою команду (все — и approved и pending)
 router.get('/', async (req, res) => {
   try {
     const [members] = await pool.query(`
       SELECT u.id, u.name, u.email, tm.invited_at, tm.status
       FROM team_members tm
       JOIN users u ON tm.member_id = u.id
-      WHERE tm.owner_id = ? AND tm.status = 'approved'
+      WHERE tm.owner_id = ?
       ORDER BY tm.invited_at DESC
     `, [req.userId]);
     res.json(members);
@@ -117,6 +118,10 @@ router.post('/', async (req, res) => {
       'INSERT INTO team_members (owner_id, member_id, status) VALUES (?, ?, ?)',
       [req.userId, member.id, 'pending']
     );
+
+    // Отправляем письмо
+    sendTeamInvitation(member.email, member.name, owner.name)
+      .catch(err => console.error('Ошибка отправки письма приглашения в команду:', err));
 
     res.status(201).json({ message: 'Приглашение отправлено', member });
   } catch (error) {

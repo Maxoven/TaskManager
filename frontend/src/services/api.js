@@ -29,6 +29,7 @@ export const inviteToProject = (projectId, email) =>
 export const respondToInvitation = (projectId, action) =>
   api.patch(`/projects/${projectId}/invitation/${action}`);
 export const getPendingInvitations = () => api.get('/projects/invitations/pending');
+export const removeProjectMember = (projectId, userId) => api.delete(`/projects/${projectId}/members/${userId}`);
 
 // Tasks
 export const createTask = (data) => api.post('/tasks', data);

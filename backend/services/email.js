@@ -137,5 +137,51 @@ module.exports = {
   sendDeadlineWarning,
   sendReportRequest,
   sendOverdueNotification,
-  sendEmailVerification
+  sendEmailVerification,
+  sendProjectInvitation,
+  sendTeamInvitation
 };
+
+// ─── Приглашение в проект ─────────────────────────────────────────────────────
+async function sendProjectInvitation(toEmail, userName, inviterName, projectName) {
+  const link = `${FRONTEND_URL}/`;
+  await transporter.sendMail({
+    from: FROM,
+    to: toEmail,
+    subject: `${inviterName} приглашает вас в проект «${projectName}»`,
+    html: `
+      <div style="font-family:sans-serif;max-width:500px;margin:auto">
+        <h2 style="color:#25b84c">Приглашение в проект</h2>
+        <p>Привет, ${userName}!</p>
+        <p><strong>${inviterName}</strong> приглашает вас в проект <strong>«${projectName}»</strong>.</p>
+        <p>Войдите в Task Manager, чтобы принять или отклонить приглашение:</p>
+        <a href="${link}" style="display:inline-block;padding:12px 24px;background:#25b84c;color:#fff;text-decoration:none;border-radius:6px;margin:16px 0">
+          Открыть Task Manager
+        </a>
+        <p style="color:#888;font-size:13px">Если вы не ожидали этого приглашения — просто проигнорируйте письмо.</p>
+      </div>
+    `
+  });
+}
+
+// ─── Приглашение в команду ────────────────────────────────────────────────────
+async function sendTeamInvitation(toEmail, userName, inviterName) {
+  const link = `${FRONTEND_URL}/`;
+  await transporter.sendMail({
+    from: FROM,
+    to: toEmail,
+    subject: `${inviterName} приглашает вас в свою команду`,
+    html: `
+      <div style="font-family:sans-serif;max-width:500px;margin:auto">
+        <h2 style="color:#7b1fa2">Приглашение в команду</h2>
+        <p>Привет, ${userName}!</p>
+        <p><strong>${inviterName}</strong> приглашает вас в свою команду.</p>
+        <p>После принятия вы автоматически получите доступ ко всем проектам ${inviterName}.</p>
+        <a href="${link}" style="display:inline-block;padding:12px 24px;background:#7b1fa2;color:#fff;text-decoration:none;border-radius:6px;margin:16px 0">
+          Принять приглашение
+        </a>
+        <p style="color:#888;font-size:13px">Если вы не ожидали этого приглашения — просто проигнорируйте письмо.</p>
+      </div>
+    `
+  });
+}

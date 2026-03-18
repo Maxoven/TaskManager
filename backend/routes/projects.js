@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../config/database');
 const authMiddleware = require('../middleware/auth');
+const { sendProjectInvitation } = require('../services/email');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -178,13 +179,15 @@ router.get('/:id', async (req, res) => {
     
     const [members] = await pool.query(`
       SELECT u.id, u.name, u.email, pm.status, pm.invited_at,
-      CASE WHEN p.owner_id = u.id THEN true ELSE false END as is_owner
+        CASE WHEN p.owner_id = u.id THEN 1 ELSE 0 END as is_owner,
+        CASE WHEN tm.id IS NOT NULL THEN 'team' ELSE 'project' END as source
       FROM project_members pm
       JOIN users u ON pm.user_id = u.id
       JOIN projects p ON pm.project_id = p.id
+      LEFT JOIN team_members tm ON tm.owner_id = p.owner_id AND tm.member_id = u.id AND tm.status = 'approved'
       WHERE pm.project_id = ?
       UNION
-      SELECT u.id, u.name, u.email, 'approved' as status, p.created_at as invited_at, true as is_owner
+      SELECT u.id, u.name, u.email, 'approved' as status, p.created_at as invited_at, 1 as is_owner, 'owner' as source
       FROM projects p
       JOIN users u ON p.owner_id = u.id
       WHERE p.id = ?
@@ -194,6 +197,28 @@ router.get('/:id', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Ошибка получения проекта' });
+  }
+});
+
+// Удалить участника из проекта
+router.delete('/:id/members/:userId', async (req, res) => {
+  try {
+    const { id, userId } = req.params;
+    const [projects] = await pool.query(
+      'SELECT * FROM projects WHERE id = ? AND owner_id = ?',
+      [id, req.userId]
+    );
+    if (projects.length === 0) {
+      return res.status(403).json({ error: 'Только владелец может удалять участников' });
+    }
+    await pool.query(
+      'DELETE FROM project_members WHERE project_id = ? AND user_id = ?',
+      [id, userId]
+    );
+    res.json({ message: 'Участник удалён из проекта' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Ошибка удаления участника' });
   }
 });
 
@@ -225,6 +250,13 @@ router.post('/:id/invite', async (req, res) => {
       'INSERT INTO project_members (project_id, user_id, status) VALUES (?, ?, ?)',
       [id, invitedUser.id, 'pending']
     );
+
+    // Получаем имя владельца и отправляем письмо
+    const [ownerRows] = await pool.query('SELECT name FROM users WHERE id = ?', [req.userId]);
+    const inviterName = ownerRows[0]?.name || 'Пользователь';
+    sendProjectInvitation(invitedUser.email, invitedUser.name, inviterName, projects[0].name)
+      .catch(err => console.error('Ошибка отправки письма приглашения:', err));
+
     res.json({ message: 'Приглашение отправлено' });
   } catch (error) {
     console.error(error);

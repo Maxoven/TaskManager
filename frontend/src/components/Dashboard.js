@@ -430,13 +430,18 @@ function Dashboard({ user, onLogout }) {
               <div className="empty-state"><p>В команде пока никого нет</p></div>
             ) : (
               team.map(member => (
-                <div key={member.id} className="team-member-card">
+                <div key={member.id} className={`team-member-card ${member.status === 'pending' ? 'team-member-pending' : ''}`}>
                   <div className="team-member-avatar">{member.name.charAt(0).toUpperCase()}</div>
                   <div className="team-member-info">
-                    <span className="team-member-name">{member.name}</span>
+                    <span className="team-member-name">
+                      {member.name}
+                      {member.status === 'pending' && <span className="pending-badge">ожидает подтверждения</span>}
+                    </span>
                     <span className="team-member-email">{member.email}</span>
                   </div>
-                  <button onClick={() => handleRemoveTeamMember(member.id, member.name)} className="btn-icon-sm btn-danger-sm" title="Удалить из команды">🗑️</button>
+                  {member.status === 'approved' && (
+                    <button onClick={() => handleRemoveTeamMember(member.id, member.name)} className="btn-icon-sm btn-danger-sm" title="Удалить из команды">🗑️</button>
+                  )}
                 </div>
               ))
             )}
