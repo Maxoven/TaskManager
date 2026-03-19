@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { useLanguage } from '../context/LanguageContext';
 import {
   getProjects, createProject, updateProject, deleteProject,
   getPendingInvitations, respondToInvitation, reorderProjects, getMyTasks,
@@ -9,6 +10,7 @@ import {
 import './Dashboard.css';
 
 function Dashboard({ user, onLogout }) {
+  const { t, lang, toggleLang } = useLanguage();
   const [projects, setProjects] = useState([]);
   const [invitations, setInvitations] = useState([]);
   const [myTasks, setMyTasks] = useState([]);
@@ -145,7 +147,7 @@ function Dashboard({ user, onLogout }) {
   };
 
   const handleRemoveTeamMember = async (memberId, memberName) => {
-    if (!window.confirm(`Удалить ${memberName} из команды? Он потеряет доступ ко всем вашим проектам.`)) return;
+    if (!window.confirm(`${memberName} — ${t('removeFromTeamConfirm')}`)) return;
     try {
       await removeTeamMember(memberId);
       loadData();
@@ -169,26 +171,27 @@ function Dashboard({ user, onLogout }) {
       <header className="dashboard-header">
         <h1>Task Manager</h1>
         <div className="user-info">
-          <span>Привет, {user?.name}!</span>
-          <button onClick={onLogout} className="btn-secondary">Выйти</button>
+          <span>{t('hi')}, {user?.name}!</span>
+          <button onClick={toggleLang} className="lang-btn" style={{marginRight:8}}>{lang === 'ru' ? 'EN' : 'RU'}</button>
+          <button onClick={onLogout} className="btn-secondary">{t('logout')}</button>
         </div>
       </header>
 
       {/* Приглашения в проекты */}
       {invitations.length > 0 && (
         <div className="invitations-section">
-          <h2>Приглашения в проекты</h2>
+          <h2>{t('projectInvitationsTitle')}</h2>
           <div className="invitations-list">
             {invitations.map(inv => (
               <div key={inv.id} className="invitation-card">
                 <div>
                   <h3>{inv.name}</h3>
-                  <p>От: {inv.owner_name}</p>
+                  <p>{t('inviteFrom')} {inv.owner_name}</p>
                   <p className="invitation-desc">{inv.description}</p>
                 </div>
                 <div className="invitation-actions">
-                  <button onClick={() => handleInvitationResponse(inv.id, 'approve')} className="btn-success">Принять</button>
-                  <button onClick={() => handleInvitationResponse(inv.id, 'reject')} className="btn-danger">Отклонить</button>
+                  <button onClick={() => handleInvitationResponse(inv.id, 'approve')} className="btn-success">{t('inviteAccept')}</button>
+                  <button onClick={() => handleInvitationResponse(inv.id, 'reject')} className="btn-danger">{t('inviteReject')}</button>
                 </div>
               </div>
             ))}
@@ -199,17 +202,17 @@ function Dashboard({ user, onLogout }) {
       {/* Приглашения в команду */}
       {teamInvitations.length > 0 && (
         <div className="invitations-section">
-          <h2>Приглашения в команду</h2>
+          <h2>{t('teamInvitationsTitle')}</h2>
           <div className="invitations-list">
             {teamInvitations.map(inv => (
               <div key={inv.owner_id} className="invitation-card team-invitation-card">
                 <div>
-                  <h3>👥 {inv.owner_name} приглашает вас в свою команду</h3>
-                  <p>Вы получите доступ ко всем проектам {inv.owner_name}</p>
+                  <h3>👥 {inv.owner_name} {t('teamInviteText')}</h3>
+                  <p>{t('teamInviteHint')} {inv.owner_name}</p>
                 </div>
                 <div className="invitation-actions">
-                  <button onClick={() => handleTeamInvitationResponse(inv.owner_id, 'approve')} className="btn-success">Принять</button>
-                  <button onClick={() => handleTeamInvitationResponse(inv.owner_id, 'reject')} className="btn-danger">Отклонить</button>
+                  <button onClick={() => handleTeamInvitationResponse(inv.owner_id, 'approve')} className="btn-success">{t('inviteAccept')}</button>
+                  <button onClick={() => handleTeamInvitationResponse(inv.owner_id, 'reject')} className="btn-danger">{t('inviteReject')}</button>
                 </div>
               </div>
             ))}
@@ -222,13 +225,13 @@ function Dashboard({ user, onLogout }) {
           📁 Проекты
         </button>
         <button className={`tab-btn ${activeTab === 'mytasks' ? 'active' : ''}`} onClick={() => setActiveTab('mytasks')}>
-          ✅ Мои задачи
+          {t('tabMyTasks')}
           {myTasks.filter(t => getTaskDeadlineClass(t) === 'overdue').length > 0 && (
             <span className="badge-count">{myTasks.filter(t => getTaskDeadlineClass(t) === 'overdue').length}</span>
           )}
         </button>
         <button className={`tab-btn ${activeTab === 'team' ? 'active' : ''}`} onClick={() => setActiveTab('team')}>
-          👥 Команда
+          {t('tabTeam')}
           {team.length > 0 && <span className="badge-team">{team.length}</span>}
         </button>
       </div>
@@ -240,7 +243,7 @@ function Dashboard({ user, onLogout }) {
               <div className="section-header">
                 <h2>Изменение порядка проектов</h2>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => setSortMode(false)} className="btn-secondary">Отмена</button>
+                  <button onClick={() => setSortMode(false)} className="btn-secondary">{t('cancelOrder')}</button>
                   <button onClick={handleSaveSort} className="btn-primary">💾 Сохранить порядок</button>
                 </div>
               </div>
@@ -274,7 +277,7 @@ function Dashboard({ user, onLogout }) {
           ) : (
             <>
               <div className="section-header">
-                <h2>Мои проекты</h2>
+                <h2>{t('myProjects')}</h2>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {projects.filter(p => p.owner_id === user?.id).length > 1 && (
                     <button onClick={handleStartSort} className="btn-secondary">⇅ Упорядочить</button>
@@ -287,7 +290,7 @@ function Dashboard({ user, onLogout }) {
               {(() => {
                 const myProjects = projects.filter(p => p.owner_id === user?.id);
                 return myProjects.length === 0 ? (
-                  <div className="empty-state"><p>У вас пока нет проектов</p><p>Создайте первый проект, чтобы начать работу</p></div>
+                  <div className="empty-state"><p>{t('noProjects')}</p><p>{t('noProjectsHint')}</p></div>
                 ) : (
                   <div className="projects-grid">
                     {myProjects.map((project) => (
@@ -301,7 +304,7 @@ function Dashboard({ user, onLogout }) {
                         </div>
                         <p>{project.description}</p>
                         <div className="project-meta">
-                          <span className="role-badge owner">Владелец</span>
+                          <span className="role-badge owner">{t('roleBadgeOwner')}</span>
                         </div>
                       </div>
                     ))}
@@ -332,7 +335,7 @@ function Dashboard({ user, onLogout }) {
                           </div>
                           <p>{project.description}</p>
                           <div className="project-meta">
-                            <span className="role-badge member">Участник</span>
+                            <span className="role-badge member">{t('roleBadgeMember')}</span>
                             <span className="project-owner">{project.owner_name}</span>
                           </div>
                         </div>
@@ -368,7 +371,7 @@ function Dashboard({ user, onLogout }) {
             </div>
             {shownTasks.length === 0 ? (
               <div className="empty-state">
-                <p>{myTasksTab === 'active' ? 'Нет активных задач' : 'Нет выполненных задач'}</p>
+                <p>{myTasksTab === 'active' ? '{t('noActiveTasks')}' : '{t('noDoneTasks')}'}</p>
               </div>
             ) : (
               <div className="mytasks-list">
@@ -385,7 +388,7 @@ function Dashboard({ user, onLogout }) {
                       <div className="mytask-footer">
                         {task.end_date && (
                           <span className={`mytask-deadline ${deadlineClass}`}>
-                            📅 Дедлайн: {new Date(task.end_date).toLocaleDateString('ru-RU')}
+                            📅 {t('taskDeadline')} {new Date(task.end_date).toLocaleDateString('ru-RU')}
                             {deadlineClass === 'overdue' && ' ⚠️ Просрочено'}
                             {deadlineClass === 'due-soon' && ' ⏰ Скоро'}
                           </span>
@@ -405,21 +408,21 @@ function Dashboard({ user, onLogout }) {
 
       {activeTab === 'team' && (
         <div className="team-section">
-          <h2>Моя команда</h2>
-          <p className="team-hint">Участники команды автоматически получают доступ ко всем вашим проектам.</p>
+          <h2>{t('myTeamTitle')}</h2>
+          <p className="team-hint">{t('myTeamHint')}</p>
           <div className="team-add-form">
-            <h3>Добавить участника</h3>
+            <h3>{t('addMember')}</h3>
             <form onSubmit={handleAddTeamMember} className="team-invite-row">
               <input
                 type="email"
-                placeholder="Email пользователя"
+                placeholder={t('addMemberEmail')}
                 value={teamEmail}
                 onChange={(e) => { setTeamEmail(e.target.value); setTeamError(''); setTeamSuccess(''); }}
                 required
                 className="team-email-input"
               />
               <button type="submit" className="btn-primary" disabled={teamLoading}>
-                {teamLoading ? 'Добавление...' : '+ Добавить'}
+                {teamLoading ? t('addMemberLoading') : t('addMemberBtn')}
               </button>
             </form>
             {teamError && <p className="team-error">{teamError}</p>}
@@ -427,7 +430,7 @@ function Dashboard({ user, onLogout }) {
           </div>
           <div className="team-list">
             {team.length === 0 ? (
-              <div className="empty-state"><p>В команде пока никого нет</p></div>
+              <div className="empty-state"><p>{t('teamEmpty')}</p></div>
             ) : (
               team.map(member => (
                 <div key={member.id} className={`team-member-card ${member.status === 'pending' ? 'team-member-pending' : ''}`}>
@@ -435,7 +438,7 @@ function Dashboard({ user, onLogout }) {
                   <div className="team-member-info">
                     <span className="team-member-name">
                       {member.name}
-                      {member.status === 'pending' && <span className="pending-badge">ожидает подтверждения</span>}
+                      {member.status === 'pending' && <span className="pending-badge">{t('teamPending')}</span>}
                     </span>
                     <span className="team-member-email">{member.email}</span>
                   </div>
@@ -452,15 +455,15 @@ function Dashboard({ user, onLogout }) {
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Создать новый проект</h2>
+            <h2>{t('createProjectTitle')}</h2>
             <form onSubmit={handleCreateProject}>
               <div className="form-group">
-                <label>Название проекта</label>
-                <input type="text" value={newProject.name} onChange={(e) => setNewProject({ ...newProject, name: e.target.value })} required placeholder="Название" />
+                <label>{t('projectNameLabel')}</label>
+                <input type="text" value={newProject.name} onChange={(e) => setNewProject({ ...newProject, name: e.target.value })} required placeholder={t('projectNamePlaceholder')} />
               </div>
               <div className="form-group">
-                <label>Описание</label>
-                <textarea value={newProject.description} onChange={(e) => setNewProject({ ...newProject, description: e.target.value })} placeholder="Краткое описание" rows="3" />
+                <label>{t('projectDescLabel')}</label>
+                <textarea value={newProject.description} onChange={(e) => setNewProject({ ...newProject, description: e.target.value })} placeholder={t('projectDescPlaceholder')} rows="3" />
               </div>
               <div className="modal-actions">
                 <button type="button" onClick={() => setShowCreateModal(false)} className="btn-secondary">Отмена</button>
@@ -474,14 +477,14 @@ function Dashboard({ user, onLogout }) {
       {editProject && (
         <div className="modal-overlay" onClick={() => setEditProject(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Редактировать проект</h2>
+            <h2>{t('editProjectTitle')}</h2>
             <form onSubmit={handleSaveEdit}>
               <div className="form-group">
-                <label>Название проекта</label>
+                <label>{t('projectNameLabel')}</label>
                 <input type="text" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
               </div>
               <div className="form-group">
-                <label>Описание</label>
+                <label>{t('projectDescLabel')}</label>
                 <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows="3" />
               </div>
               <div className="modal-actions">

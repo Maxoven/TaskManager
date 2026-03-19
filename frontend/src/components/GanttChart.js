@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { format, addDays, subDays, differenceInDays, startOfDay, eachMonthOfInterval, endOfMonth } from 'date-fns';
 import { ru } from 'date-fns/locale';
+import { useLanguage } from '../context/LanguageContext';
 import './GanttChart.css';
 
 const PERIOD_DAYS = 365;
@@ -10,6 +11,8 @@ const SIDEBAR_W = 200;     // ширина колонки задач
 const HEADER_H = 36;       // высота шапки
 
 function GanttChart({ tasks, onTaskClick, members }) {
+  const { t, lang } = useLanguage();
+  const dateLocale = lang === 'ru' ? ru : undefined;
   const today = startOfDay(new Date());
   const [viewStart] = useState(subDays(today, 20));
   const [filterAssignee, setFilterAssignee] = useState('all');
@@ -100,8 +103,8 @@ function GanttChart({ tasks, onTaskClick, members }) {
   if (tasks.filter(t => t.start_date && t.end_date).length === 0) {
     return (
       <div className="gantt-empty">
-        <p>Нет задач с установленными датами</p>
-        <p>Добавьте даты начала и окончания к задачам, чтобы увидеть диаграмму Ганта</p>
+        <p>{t('ganttNoTasks')}</p>
+        <p>{t('ganttNoTasksHint')}</p>
       </div>
     );
   }
@@ -114,22 +117,22 @@ function GanttChart({ tasks, onTaskClick, members }) {
       <div className="gantt-controls">
         <div className="gantt-nav">
           <span className="gantt-period-label">
-            {format(viewStart, 'd MMM yyyy', { locale: ru })} — {format(viewEnd, 'd MMM yyyy', { locale: ru })}
+            {format(viewStart, 'd MMM yyyy', { locale: dateLocale })} — {format(viewEnd, 'd MMM yyyy', { locale: dateLocale })}
           </span>
         </div>
 
         <div className="gantt-filter">
           <select className="gantt-assignee-filter" value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)}>
-            <option value="all">Все исполнители</option>
+            <option value="all">{t('ganttAllAssignees')}</option>
             {members && members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
         </div>
 
         <div className="gantt-legend">
-          <div className="legend-item"><span className="legend-color" style={{ background: '#42a5f5' }}></span><span>В процессе</span></div>
-          <div className="legend-item"><span className="legend-color" style={{ background: '#66bb6a' }}></span><span>Выполнено</span></div>
-          <div className="legend-item"><span className="legend-color" style={{ background: '#26a69a' }}></span><span>Отчёт сдан</span></div>
-          <div className="legend-item"><span className="legend-color" style={{ background: '#ef5350' }}></span><span>Просрочена</span></div>
+          <div className="legend-item"><span className="legend-color" style={{ background: '#42a5f5' }}></span><span>{t('ganttInProgress')}</span></div>
+          <div className="legend-item"><span className="legend-color" style={{ background: '#66bb6a' }}></span><span>{t('ganttDone')}</span></div>
+          <div className="legend-item"><span className="legend-color" style={{ background: '#26a69a' }}></span><span>{t('ganttReportSent')}</span></div>
+          <div className="legend-item"><span className="legend-color" style={{ background: '#ef5350' }}></span><span>{t('ganttOverdue')}</span></div>
         </div>
       </div>
 
@@ -168,7 +171,7 @@ function GanttChart({ tasks, onTaskClick, members }) {
                 const mEndPx = Math.min(totalWidth, dateToPx(mEnd) + DAY_PX);
                 return (
                   <div key={i} className="gantt-month-header" style={{ left: mLeftPx, width: mEndPx - mLeftPx }}>
-                    {format(monthStart, 'LLLL yyyy', { locale: ru })}
+                    {format(monthStart, 'LLLL yyyy', { locale: dateLocale })}
                   </div>
                 );
               })}

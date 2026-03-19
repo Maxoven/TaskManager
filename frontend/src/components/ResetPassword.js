@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { checkResetToken, resetPassword } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 import './Auth.css';
 
 function ResetPassword() {
+  const { t, lang, toggleLang } = useLanguage();
   const { token } = useParams();
   const navigate = useNavigate();
   const [valid, setValid] = useState(null);
@@ -14,93 +16,57 @@ function ResetPassword() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    checkResetToken(token)
-      .then(() => setValid(true))
-      .catch(() => setValid(false));
+    checkResetToken(token).then(() => setValid(true)).catch(() => setValid(false));
   }, [token]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (password !== confirm) {
-      setError('Пароли не совпадают');
-      return;
-    }
-    if (password.length < 6) {
-      setError('Пароль должен быть не менее 6 символов');
-      return;
-    }
-    setError('');
-    setLoading(true);
-    try {
-      await resetPassword(token, password);
-      setDone(true);
-      setTimeout(() => navigate('/login'), 3000);
-    } catch (err) {
-      setError(err.response?.data?.error || 'Ошибка изменения пароля');
-    } finally {
-      setLoading(false);
-    }
+    if (password !== confirm) { setError(t('resetMismatch')); return; }
+    if (password.length < 6) { setError(t('resetShort')); return; }
+    setError(''); setLoading(true);
+    try { await resetPassword(token, password); setDone(true); setTimeout(() => navigate('/login'), 3000); }
+    catch (err) { setError(err.response?.data?.error || t('resetError')); }
+    finally { setLoading(false); }
   };
 
-  if (valid === null) {
-    return <div className="auth-container"><div className="auth-box"><p>Проверка ссылки...</p></div></div>;
-  }
+  const LangBtn = () => <div className="auth-lang-toggle"><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>;
 
-  if (!valid) {
-    return (
-      <div className="auth-container">
-        <div className="auth-box">
-          <div style={{ fontSize: '48px', textAlign: 'center' }}>❌</div>
-          <h2>Ссылка недействительна</h2>
-          <p>Ссылка для сброса пароля истекла или уже была использована.</p>
-          <Link to="/forgot-password" className="btn-primary" style={{ display: 'block', textAlign: 'center', marginTop: '16px' }}>
-            Запросить новую ссылку
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (done) {
-    return (
-      <div className="auth-container">
-        <div className="auth-box">
-          <div className="success-icon">✅</div>
-          <h2>Пароль изменён!</h2>
-          <p>Вы будете перенаправлены на страницу входа через 3 секунды...</p>
-        </div>
-      </div>
-    );
-  }
+  if (valid === null) return <div className="auth-container"><div className="auth-box"><LangBtn /><p>{t('resetChecking')}</p></div></div>;
+  if (!valid) return (
+    <div className="auth-container"><div className="auth-box">
+      <LangBtn />
+      <div style={{ fontSize: '48px', textAlign: 'center' }}>❌</div>
+      <h2>{t('resetInvalidTitle')}</h2>
+      <p>{t('resetInvalidText')}</p>
+      <Link to="/forgot-password" className="btn-primary" style={{ display: 'block', textAlign: 'center', marginTop: '16px' }}>{t('resetInvalidBtn')}</Link>
+    </div></div>
+  );
+  if (done) return (
+    <div className="auth-container"><div className="auth-box">
+      <LangBtn />
+      <div className="success-icon">✅</div>
+      <h2>{t('resetDoneTitle')}</h2>
+      <p>{t('resetDoneText')}</p>
+    </div></div>
+  );
 
   return (
     <div className="auth-container">
       <div className="auth-box">
-        <h1>Новый пароль</h1>
+        <LangBtn />
+        <h1>{t('resetTitle')}</h1>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Новый пароль</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              placeholder="Минимум 6 символов"
-            />
+            <label>{t('resetNewPassword')}</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder={t('resetNewPasswordPlaceholder')} />
           </div>
           <div className="form-group">
-            <label>Подтвердите пароль</label>
-            <input
-              type="password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              required
-              placeholder="Повторите пароль"
-            />
+            <label>{t('resetConfirm')}</label>
+            <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required placeholder={t('resetConfirmPlaceholder')} />
           </div>
           {error && <div className="error">{error}</div>}
           <button type="submit" disabled={loading} className="btn-primary">
-            {loading ? 'Сохранение...' : 'Сохранить пароль'}
+            {loading ? t('resetLoading') : t('resetBtn')}
           </button>
         </form>
       </div>

@@ -1,15 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { uploadFile, getTaskAttachments, downloadFile, deleteFile, getTaskReports } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 import './TaskModal.css';
 
 function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttachmentsChange }) {
+  const { t } = useLanguage();
   const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    startDate: '',
-    endDate: '',
-    assigneeIds: [],
-    dependencies: []
+    title: '', description: '', startDate: '', endDate: '', assigneeIds: [], dependencies: []
   });
   const [attachments, setAttachments] = useState([]);
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -22,16 +19,14 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttac
       setFormData({
         title: task.title || '',
         description: task.description || '',
-        startDate: (task.start_date || "").split("T")[0],
-        endDate: (task.end_date || "").split("T")[0],
+        startDate: (task.start_date || '').split('T')[0],
+        endDate: (task.end_date || '').split('T')[0],
         assigneeIds: task.assignees?.map(a => a.id) || [],
         dependencies: task.dependencies?.map(d => ({
           depends_on_task_id: d.depends_on_task_id,
           dependency_type: d.dependency_type || 'finish_to_start'
         })) || []
       });
-      
-      // Загружаем файлы только для существующей задачи
       loadAttachments();
       loadReports();
     }
@@ -40,34 +35,20 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttac
   const loadReports = async () => {
     if (!task || !task.id) return;
     setLoadingReports(true);
-    try {
-      const response = await getTaskReports(task.id);
-      setReports(response.data || []);
-    } catch (error) {
-      console.error('Ошибка загрузки отчётов:', error);
-    } finally {
-      setLoadingReports(false);
-    }
+    try { const r = await getTaskReports(task.id); setReports(r.data || []); }
+    catch (e) { console.error(e); }
+    finally { setLoadingReports(false); }
   };
 
   const loadAttachments = async () => {
     if (!task || !task.id) return;
-    
     setLoadingAttachments(true);
-    try {
-      const response = await getTaskAttachments(task.id);
-      setAttachments(response.data || []);
-    } catch (error) {
-      console.error('Ошибка загрузки файлов:', error);
-    } finally {
-      setLoadingAttachments(false);
-    }
+    try { const r = await getTaskAttachments(task.id); setAttachments(r.data || []); }
+    catch (e) { console.error(e); }
+    finally { setLoadingAttachments(false); }
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSave(formData);
-  };
+  const handleSubmit = (e) => { e.preventDefault(); onSave(formData); };
 
   const handleAssigneeToggle = (userId) => {
     setFormData(prev => ({
@@ -79,86 +60,52 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttac
   };
 
   const handleAddDependency = () => {
-    setFormData(prev => ({
-      ...prev,
-      dependencies: [...prev.dependencies, { depends_on_task_id: '', dependency_type: 'finish_to_start' }]
-    }));
+    setFormData(prev => ({ ...prev, dependencies: [...prev.dependencies, { depends_on_task_id: '', dependency_type: 'finish_to_start' }] }));
   };
 
   const handleRemoveDependency = (index) => {
-    setFormData(prev => ({
-      ...prev,
-      dependencies: prev.dependencies.filter((_, i) => i !== index)
-    }));
+    setFormData(prev => ({ ...prev, dependencies: prev.dependencies.filter((_, i) => i !== index) }));
   };
 
   const handleDependencyChange = (index, field, value) => {
     setFormData(prev => ({
       ...prev,
-      dependencies: prev.dependencies.map((dep, i) => 
-        i === index ? { ...dep, [field]: parseInt(value) || value } : dep
-      )
+      dependencies: prev.dependencies.map((dep, i) => i === index ? { ...dep, [field]: parseInt(value) || value } : dep)
     }));
   };
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !task || !task.id) return;
-
-    // Проверка размера файла (10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      alert('Файл слишком большой. Максимальный размер: 10MB');
-      return;
-    }
-
+    if (file.size > 10 * 1024 * 1024) { alert(t('taskFileSizeError')); return; }
     setUploadingFile(true);
     try {
       await uploadFile(task.id, file);
       await loadAttachments();
-      if (onAttachmentsChange) {
-        onAttachmentsChange(); // Обновляем счетчик файлов в карточке
-      }
-      e.target.value = ''; // Сбрасываем input
-    } catch (error) {
-      alert(error.response?.data?.error || 'Ошибка загрузки файла');
-      console.error('Ошибка загрузки файла:', error);
-    } finally {
-      setUploadingFile(false);
-    }
+      if (onAttachmentsChange) onAttachmentsChange();
+      e.target.value = '';
+    } catch (error) { alert(error.response?.data?.error || t('error')); }
+    finally { setUploadingFile(false); }
   };
 
   const handleFileDownload = async (fileId, fileName) => {
     try {
       const response = await downloadFile(task.id, fileId);
-      
-      // Создаем ссылку для скачивания
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', fileName);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      link.href = url; link.setAttribute('download', fileName);
+      document.body.appendChild(link); link.click(); link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (error) {
-      alert('Ошибка скачивания файла');
-      console.error('Ошибка скачивания файла:', error);
-    }
+    } catch { alert(t('error')); }
   };
 
   const handleFileDelete = async (fileId, fileName) => {
-    if (!window.confirm(`Удалить файл "${fileName}"?`)) return;
-
+    if (!window.confirm(`${t('taskDeleteFileConfirm')} "${fileName}"?`)) return;
     try {
       await deleteFile(task.id, fileId);
       await loadAttachments();
-      if (onAttachmentsChange) {
-        onAttachmentsChange(); // Обновляем счетчик файлов в карточке
-      }
-    } catch (error) {
-      alert('Ошибка удаления файла');
-      console.error('Ошибка удаления файла:', error);
-    }
+      if (onAttachmentsChange) onAttachmentsChange();
+    } catch { alert(t('error')); }
   };
 
   const formatFileSize = (bytes) => {
@@ -167,70 +114,44 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttac
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
-  // Фильтруем задачи для связей (исключаем текущую задачу)
   const availableTasksForDependency = allTasks?.filter(t => t.id !== task?.id) || [];
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal task-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>{task ? 'Редактировать задачу' : 'Создать задачу'}</h2>
+          <h2>{task ? t('editTaskTitle') : t('createTaskTitle')}</h2>
           <button onClick={onClose} className="close-btn">×</button>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Название задачи *</label>
-            <input
-              type="text"
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              required
-              placeholder="Название"
-            />
+            <label>{t('taskTitleLabel')}</label>
+            <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} required placeholder={t('taskTitlePlaceholder')} />
           </div>
 
           <div className="form-group">
-            <label>Описание</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Описание задачи"
-              rows="4"
-            />
+            <label>{t('taskDescLabel')}</label>
+            <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder={t('taskDescPlaceholder')} rows="4" />
           </div>
 
           <div className="form-row">
             <div className="form-group">
-              <label>Дата начала</label>
-              <input
-                type="date"
-                value={formData.startDate}
-                onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-              />
+              <label>{t('taskStartDate')}</label>
+              <input type="date" value={formData.startDate} onChange={(e) => setFormData({ ...formData, startDate: e.target.value })} />
             </div>
-
             <div className="form-group">
-              <label>Дата окончания</label>
-              <input
-                type="date"
-                value={formData.endDate}
-                onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                min={formData.startDate}
-              />
+              <label>{t('taskEndDate')}</label>
+              <input type="date" value={formData.endDate} onChange={(e) => setFormData({ ...formData, endDate: e.target.value })} min={formData.startDate} />
             </div>
           </div>
 
           <div className="form-group">
-            <label>Исполнители</label>
+            <label>{t('taskAssignees')}</label>
             <div className="assignees-select">
               {members.map(member => (
                 <label key={member.id} className="assignee-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={formData.assigneeIds.includes(member.id)}
-                    onChange={() => handleAssigneeToggle(member.id)}
-                  />
+                  <input type="checkbox" checked={formData.assigneeIds.includes(member.id)} onChange={() => handleAssigneeToggle(member.id)} />
                   <span>{member.name}</span>
                 </label>
               ))}
@@ -239,82 +160,48 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttac
 
           <div className="form-group">
             <div className="dependency-header">
-              <label>Связи с задачами</label>
-              <button 
-                type="button" 
-                onClick={handleAddDependency}
-                className="btn-add-dependency"
-                disabled={availableTasksForDependency.length === 0}
-              >
-                + Добавить связь
+              <label>{t('taskDependencies')}</label>
+              <button type="button" onClick={handleAddDependency} className="btn-add-dependency" disabled={availableTasksForDependency.length === 0}>
+                {t('taskAddDependency')}
               </button>
             </div>
-            
             {formData.dependencies.length === 0 ? (
-              <p className="no-dependencies">Нет связей с другими задачами</p>
+              <p className="no-dependencies">{t('taskNoDependencies')}</p>
             ) : (
               <div className="dependencies-list">
                 {formData.dependencies.map((dep, index) => (
                   <div key={index} className="dependency-item">
-                    <select
-                      value={dep.depends_on_task_id}
-                      onChange={(e) => handleDependencyChange(index, 'depends_on_task_id', e.target.value)}
-                      required
-                    >
-                      <option value="">Выберите задачу</option>
-                      {availableTasksForDependency.map(t => (
-                        <option key={t.id} value={t.id}>{t.title}</option>
-                      ))}
+                    <select value={dep.depends_on_task_id} onChange={(e) => handleDependencyChange(index, 'depends_on_task_id', e.target.value)} required>
+                      <option value="">{t('taskSelectTask')}</option>
+                      {availableTasksForDependency.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
                     </select>
-                    
-                    <select
-                      value={dep.dependency_type}
-                      onChange={(e) => handleDependencyChange(index, 'dependency_type', e.target.value)}
-                    >
-                      <option value="finish_to_start">Окончание → Начало</option>
-                      <option value="start_to_start">Начало → Начало</option>
-                      <option value="finish_to_finish">Окончание → Окончание</option>
-                      <option value="start_to_finish">Начало → Окончание</option>
+                    <select value={dep.dependency_type} onChange={(e) => handleDependencyChange(index, 'dependency_type', e.target.value)}>
+                      <option value="finish_to_start">{t('depFinishToStart')}</option>
+                      <option value="start_to_start">{t('depStartToStart')}</option>
+                      <option value="finish_to_finish">{t('depFinishToFinish')}</option>
+                      <option value="start_to_finish">{t('depStartToFinish')}</option>
                     </select>
-                    
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveDependency(index)}
-                      className="btn-remove-dependency"
-                    >
-                      ×
-                    </button>
+                    <button type="button" onClick={() => handleRemoveDependency(index)} className="btn-remove-dependency">×</button>
                   </div>
                 ))}
               </div>
             )}
-            <p className="dependency-hint">
-              💡 Связи определяют порядок выполнения задач на диаграмме Ганта
-            </p>
+            <p className="dependency-hint">{t('taskDependencyHint')}</p>
           </div>
 
-          {/* Секция файлов - только для существующих задач */}
           {task && task.id && (
             <div className="form-group">
               <div className="attachments-header">
-                <label>Файлы</label>
+                <label>{t('taskFiles')}</label>
                 <label className="btn-upload-file" htmlFor="file-upload">
-                  {uploadingFile ? '⏳ Загрузка...' : '📎 Добавить файл'}
+                  {uploadingFile ? t('taskUploading') : t('taskAddFile')}
                 </label>
-                <input
-                  id="file-upload"
-                  type="file"
-                  onChange={handleFileUpload}
-                  disabled={uploadingFile}
-                  style={{ display: 'none' }}
-                  accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar"
-                />
+                <input id="file-upload" type="file" onChange={handleFileUpload} disabled={uploadingFile} style={{ display: 'none' }} accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar" />
               </div>
-
               {loadingAttachments ? (
-                <p className="attachments-loading">Загрузка файлов...</p>
+                <p className="attachments-loading">{t('taskLoadingFiles')}</p>
               ) : attachments.length === 0 ? (
-                <p className="no-attachments">Нет прикрепленных файлов</p>
+                <p className="no-attachments">{t('taskNoFiles')}</p>
               ) : (
                 <div className="attachments-list">
                   {attachments.map(file => (
@@ -323,61 +210,37 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttac
                         <span className="attachment-icon">📄</span>
                         <div className="attachment-details">
                           <div className="attachment-name">{file.original_name}</div>
-                          <div className="attachment-meta">
-                            {formatFileSize(file.file_size)} · {new Date(file.uploaded_at).toLocaleDateString('ru-RU')}
-                          </div>
+                          <div className="attachment-meta">{formatFileSize(file.file_size)} · {new Date(file.uploaded_at).toLocaleDateString()}</div>
                         </div>
                       </div>
                       <div className="attachment-actions">
-                        <button
-                          type="button"
-                          onClick={() => handleFileDownload(file.id, file.original_name)}
-                          className="btn-download-file"
-                          title="Скачать"
-                        >
-                          ⬇️
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleFileDelete(file.id, file.original_name)}
-                          className="btn-delete-file"
-                          title="Удалить"
-                        >
-                          🗑️
-                        </button>
+                        <button type="button" onClick={() => handleFileDownload(file.id, file.original_name)} className="btn-download-file" title={t('taskDownload')}>⬇️</button>
+                        <button type="button" onClick={() => handleFileDelete(file.id, file.original_name)} className="btn-delete-file" title={t('delete')}>🗑️</button>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-              
-              <p className="attachments-hint">
-                💡 Максимальный размер файла: 10MB. Поддерживаемые форматы: jpg, png, pdf, doc, docx, xls, xlsx, txt, zip, rar
-              </p>
+              <p className="attachments-hint">{t('taskFileHint')}</p>
             </div>
           )}
 
-          {!task && (
-            <p className="create-task-hint">
-              💡 Файлы можно будет добавить после создания задачи
-            </p>
-          )}
+          {!task && <p className="create-task-hint">{t('taskCreateHint')}</p>}
 
-          {/* Секция отчётов — только для существующих задач */}
           {task && task.id && (
             <div className="form-group reports-section">
-              <label>Отчёты по задаче</label>
+              <label>{t('taskReports')}</label>
               {loadingReports ? (
-                <p style={{ color: '#888', fontSize: '13px' }}>Загрузка отчётов...</p>
+                <p style={{ color: '#888', fontSize: '13px' }}>{t('taskLoadingReports')}</p>
               ) : reports.length === 0 ? (
-                <p style={{ color: '#888', fontSize: '13px' }}>Отчётов пока нет</p>
+                <p style={{ color: '#888', fontSize: '13px' }}>{t('taskNoReports')}</p>
               ) : (
                 <div className="reports-list">
                   {reports.map(report => (
                     <div key={report.id} className="report-item">
                       <div className="report-header">
                         <span className="report-author">👤 {report.user_name}</span>
-                        <span className="report-date">{new Date(report.submitted_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="report-date">{new Date(report.submitted_at).toLocaleDateString()}</span>
                       </div>
                       <p className="report-text">{report.report_text}</p>
                     </div>
@@ -389,21 +252,11 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttac
 
           <div className="modal-actions">
             {onDelete && task && (
-              <button 
-                type="button" 
-                onClick={() => onDelete(task.id)} 
-                className="btn-danger"
-              >
-                Удалить
-              </button>
+              <button type="button" onClick={() => onDelete(task.id)} className="btn-danger">{t('delete')}</button>
             )}
             <div className="modal-actions-right">
-              <button type="button" onClick={onClose} className="btn-secondary">
-                Отмена
-              </button>
-              <button type="submit" className="btn-primary">
-                {task ? 'Сохранить' : 'Создать'}
-              </button>
+              <button type="button" onClick={onClose} className="btn-secondary">{t('cancel')}</button>
+              <button type="submit" className="btn-primary">{task ? t('save') : t('create')}</button>
             </div>
           </div>
         </form>

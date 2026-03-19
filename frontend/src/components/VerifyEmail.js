@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { verifyEmail } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 import './Auth.css';
 
 function VerifyEmail({ onLogin }) {
+  const { t, lang, toggleLang } = useLanguage();
   const { token } = useParams();
   const navigate = useNavigate();
-  const [status, setStatus] = useState('loading'); // loading | success | error
+  const [status, setStatus] = useState('loading');
   const [message, setMessage] = useState('');
 
   useEffect(() => {
@@ -14,16 +16,12 @@ function VerifyEmail({ onLogin }) {
       try {
         const response = await verifyEmail(token);
         setStatus('success');
-        // Автоматически логиним пользователя
         if (response.data.user && response.data.token) {
-          setTimeout(() => {
-            onLogin(response.data.user, response.data.token);
-            navigate('/');
-          }, 2000);
+          setTimeout(() => { onLogin(response.data.user, response.data.token); navigate('/'); }, 2000);
         }
       } catch (err) {
         setStatus('error');
-        setMessage(err.response?.data?.error || 'Ссылка недействительна или истекла');
+        setMessage(err.response?.data?.error || t('verifyErrorTitle'));
       }
     };
     verify();
@@ -32,29 +30,10 @@ function VerifyEmail({ onLogin }) {
   return (
     <div className="auth-container">
       <div className="auth-box" style={{ textAlign: 'center' }}>
-        {status === 'loading' && (
-          <>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
-            <h2>Подтверждаем email...</h2>
-          </>
-        )}
-        {status === 'success' && (
-          <>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
-            <h2>Email подтверждён!</h2>
-            <p style={{ color: '#555' }}>Выполняем вход в систему...</p>
-          </>
-        )}
-        {status === 'error' && (
-          <>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>❌</div>
-            <h2>Ошибка подтверждения</h2>
-            <p style={{ color: '#888' }}>{message}</p>
-            <p style={{ marginTop: 16, fontSize: 13 }}>
-              <Link to="/login">← Вернуться ко входу</Link>
-            </p>
-          </>
-        )}
+        <div className="auth-lang-toggle"><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>
+        {status === 'loading' && (<><div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div><h2>{t('verifyLoading')}</h2></>)}
+        {status === 'success' && (<><div style={{ fontSize: 48, marginBottom: 16 }}>✅</div><h2>{t('verifySuccess')}</h2><p style={{ color: '#555' }}>{t('verifySuccessText')}</p></>)}
+        {status === 'error' && (<><div style={{ fontSize: 48, marginBottom: 16 }}>❌</div><h2>{t('verifyErrorTitle')}</h2><p style={{ color: '#888' }}>{message}</p><p style={{ marginTop: 16, fontSize: 13 }}><Link to="/login">{t('verifyBackToLogin')}</Link></p></>)}
       </div>
     </div>
   );

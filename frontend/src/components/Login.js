@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { login, resendVerification } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 import './Auth.css';
 
 function Login({ onLogin }) {
+  const { t, lang, toggleLang } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -13,64 +15,53 @@ function Login({ onLogin }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    setNeedsVerification(false);
-    setLoading(true);
+    setError(''); setNeedsVerification(false); setLoading(true);
     try {
       const response = await login({ email, password });
       onLogin(response.data.user, response.data.token);
     } catch (err) {
-      if (err.response?.data?.needsVerification) {
-        setNeedsVerification(true);
-      }
-      setError(err.response?.data?.error || 'Ошибка входа');
-    } finally {
-      setLoading(false);
-    }
+      if (err.response?.data?.needsVerification) setNeedsVerification(true);
+      setError(err.response?.data?.error || t('loginError'));
+    } finally { setLoading(false); }
   };
 
   const handleResend = async () => {
-    try {
-      await resendVerification(email);
-      setResendMsg('Письмо отправлено! Проверьте почту.');
-    } catch {
-      setResendMsg('Не удалось отправить письмо');
-    }
+    try { await resendVerification(email); setResendMsg(t('loginResendDone')); }
+    catch { setResendMsg(t('loginError')); }
   };
 
   return (
     <div className="auth-container">
       <div className="auth-box">
-        <h1>Вход в Task Manager</h1>
+        <div className="auth-lang-toggle">
+          <button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button>
+        </div>
+        <h1>{t('loginTitle')}</h1>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Email</label>
+            <label>{t('loginEmail')}</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="your@email.com" />
           </div>
           <div className="form-group">
-            <label>Пароль</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="Введите пароль" />
+            <label>{t('loginPassword')}</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder={t('loginPassword')} />
           </div>
           {error && <div className="error">{error}</div>}
           {needsVerification && (
             <div style={{ marginTop: 8, fontSize: 13 }}>
-              <span style={{ color: '#888' }}>Не получили письмо? </span>
+              <span style={{ color: '#888' }}>{t('loginNotReceived')}</span>
               <button type="button" onClick={handleResend} style={{ background: 'none', border: 'none', color: '#25b84c', cursor: 'pointer', padding: 0, fontSize: 13, textDecoration: 'underline' }}>
-                Отправить повторно
+                {t('loginResend')}
               </button>
               {resendMsg && <span style={{ color: '#25b84c', marginLeft: 8 }}>{resendMsg}</span>}
             </div>
           )}
           <button type="submit" disabled={loading} className="btn-primary">
-            {loading ? 'Вход...' : 'Войти'}
+            {loading ? t('loginLoading') : t('loginBtn')}
           </button>
         </form>
-        <p className="auth-link">
-          <Link to="/forgot-password" className="forgot-link">Забыли пароль?</Link>
-        </p>
-        <p className="auth-link">
-          Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
-        </p>
+        <p className="auth-link"><Link to="/forgot-password" className="forgot-link">{t('loginForgot')}</Link></p>
+        <p className="auth-link">{t('loginNoAccount')} <Link to="/register">{t('loginRegister')}</Link></p>
       </div>
     </div>
   );

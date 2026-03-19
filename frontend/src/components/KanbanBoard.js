@@ -4,9 +4,11 @@ import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { getProject, createTask, updateTask, deleteTask, inviteToProject, updateProject, getTaskReports, removeProjectMember } from '../services/api';
 import TaskModal from './TaskModal';
 import GanttChart from './GanttChart';
+import { useLanguage } from '../context/LanguageContext';
 import './KanbanBoard.css';
 
 function KanbanBoard({ user, onLogout }) {
+  const { t, lang, toggleLang } = useLanguage();
   const { id } = useParams();
   const navigate = useNavigate();
   const [project, setProject] = useState(null);
@@ -143,7 +145,7 @@ function KanbanBoard({ user, onLogout }) {
   const isOwner = project?.owner_id === user?.id;
 
   const handleRemoveMember = async (userId, userName) => {
-    if (!window.confirm(`Удалить ${userName} из проекта?`)) return;
+    if (!window.confirm(`${userName} — ${t('removeMemberConfirm')}`)) return;
     try {
       await removeProjectMember(id, userId);
       loadProject();
@@ -186,7 +188,7 @@ function KanbanBoard({ user, onLogout }) {
                     onClick={() => setShowFullDesc(!showFullDesc)}
                     style={{ background: 'none', border: 'none', color: '#25b84c', cursor: 'pointer', padding: '0 4px', fontSize: 13 }}
                   >
-                    {showFullDesc ? 'Свернуть' : 'Читать далее'}
+                    {showFullDesc ? t('collapse') : t('readMore')}
                   </button>
                 </>
               ) : project?.description}
@@ -195,25 +197,26 @@ function KanbanBoard({ user, onLogout }) {
         </div>
         <div className="header-actions">
           <div className="view-switcher">
-            <button className={`view-btn ${viewMode === 'kanban' ? 'active' : ''}`} onClick={() => setViewMode('kanban')}>📋 Канбан</button>
-            <button className={`view-btn ${viewMode === 'gantt' ? 'active' : ''}`} onClick={() => setViewMode('gantt')}>📊 Гант</button>
+            <button className={`view-btn ${viewMode === 'kanban' ? 'active' : ''}`} onClick={() => setViewMode('kanban')}>{t('kanban')}</button>
+            <button className={`view-btn ${viewMode === 'gantt' ? 'active' : ''}`} onClick={() => setViewMode('gantt')}>{t('gantt')}</button>
           </div>
           {isOwner && (
-            <button onClick={() => setShowInviteModal(true)} className="btn-primary">Пригласить</button>
+            <button onClick={() => setShowInviteModal(true)} className="btn-primary">{t('invite')}</button>
           )}
-          <button onClick={onLogout} className="btn-secondary">Выйти</button>
+          <button onClick={toggleLang} className="lang-btn" style={{marginRight:8}}>{lang === 'ru' ? 'EN' : 'RU'}</button>
+          <button onClick={onLogout} className="btn-secondary">{t('logout')}</button>
         </div>
       </header>
 
       <div className="team-members">
-        <h3>Команда:</h3>
+        <h3>{t('team')}</h3>
         <div className="members-list">
           {members.filter(m => m.status === 'approved' || m.is_owner == 1).map(member => (
             <div key={member.id} className="member-badge">
               <span>{member.name}</span>
               {member.is_owner == 1 && <span>👑</span>}
-              {member.source === 'team' && <span className="source-tag source-team" title="Добавлен через команду">👥</span>}
-              {member.source === 'project' && <span className="source-tag source-project" title="Приглашён в проект">✉️</span>}
+              {member.source === 'team' && <span className="source-tag source-team" title={t('sourceTeamTitle')}>👥</span>}
+              {member.source === 'project' && <span className="source-tag source-project" title={t('sourceProjectTitle')}>✉️</span>}
               {isOwner && member.is_owner != 1 && (
                 <button
                   className="member-remove-btn"
@@ -236,20 +239,20 @@ function KanbanBoard({ user, onLogout }) {
       {viewMode === 'kanban' && (
         <div className="kanban-filters">
           <div className="filter-group">
-            <label>Исполнитель:</label>
+            <label>{t('filterAssignee')}</label>
             <select value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)}>
-              <option value="all">Все</option>
+              <option value="all">{t('filterAll')}</option>
               {approvedMembers.map(m => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </select>
           </div>
           <div className="filter-group">
-            <label>Сортировка:</label>
+            <label>{t('sortBy')}</label>
             <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-              <option value="created">По дате создания</option>
-              <option value="deadline">По дедлайну</option>
-              <option value="title">По названию</option>
+              <option value="created">{t('sortByCreated')}</option>
+              <option value="deadline">{t('sortByDeadline')}</option>
+              <option value="title">{t('sortByTitle')}</option>
             </select>
           </div>
           {(filterAssignee !== 'all' || sortBy !== 'created') && (
@@ -359,7 +362,7 @@ function KanbanBoard({ user, onLogout }) {
       {showEditModal && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Редактировать проект</h2>
+            <h2>{t('editProjectModalTitle')}</h2>
             <form onSubmit={handleSaveProject}>
               <div className="form-group">
                 <label>Название</label>
@@ -370,8 +373,8 @@ function KanbanBoard({ user, onLogout }) {
                 <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows="3" />
               </div>
               <div className="modal-actions">
-                <button type="button" onClick={() => setShowEditModal(false)} className="btn-secondary">Отмена</button>
-                <button type="submit" className="btn-primary">Сохранить</button>
+                <button type="button" onClick={() => setShowEditModal(false)} className="btn-secondary">{t('cancel')}</button>
+                <button type="submit" className="btn-primary">{t('save')}</button>
               </div>
             </form>
           </div>
@@ -382,15 +385,15 @@ function KanbanBoard({ user, onLogout }) {
       {showInviteModal && (
         <div className="modal-overlay" onClick={() => setShowInviteModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Пригласить в проект</h2>
+            <h2>{t('inviteModalTitle')}</h2>
             <form onSubmit={handleInvite}>
               <div className="form-group">
-                <label>Email пользователя</label>
-                <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} required placeholder="user@example.com" />
+                <label>{t('inviteEmailLabel')}</label>
+                <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} required placeholder={t('inviteEmailPlaceholder')} />
               </div>
               <div className="modal-actions">
-                <button type="button" onClick={() => setShowInviteModal(false)} className="btn-secondary">Отмена</button>
-                <button type="submit" className="btn-primary">Отправить приглашение</button>
+                <button type="button" onClick={() => setShowInviteModal(false)} className="btn-secondary">{t('cancel')}</button>
+                <button type="submit" className="btn-primary">{t('inviteBtn')}</button>
               </div>
             </form>
           </div>
