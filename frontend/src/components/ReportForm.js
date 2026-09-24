@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { getReportByToken, submitReportByToken } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
+import { Logo } from './AppHeader';
 import './Auth.css';
 
 function ReportForm() {
@@ -30,7 +31,7 @@ function ReportForm() {
     finally { setSubmitting(false); }
   };
 
-  const LangBtn = () => <div className="auth-lang-toggle"><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>;
+  const LangBtn = () => <div className="auth-lang-toggle"><Logo size={28} /><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>;
 
   if (loading) return <div className="auth-container"><div className="auth-box"><LangBtn /><p>{t('loading')}</p></div></div>;
   if (error) return <div className="auth-container"><div className="auth-box"><LangBtn /><div style={{ fontSize: '48px', textAlign: 'center' }}>❌</div><h2>{t('reportErrorTitle')}</h2><p>{error}</p></div></div>;
@@ -40,7 +41,7 @@ function ReportForm() {
       <div className="auth-container"><div className="auth-box"><LangBtn />
         <div className="success-icon">✅</div>
         <h2>{done ? t('reportSentTitle') : t('reportAlreadySentTitle')}</h2>
-        <p>{t('reportSentText')}, {info?.userName}! {lang === 'ru' ? 'Ваш отчёт по задаче' : 'Your report for task'} <strong>«{info?.taskTitle}»</strong> {t('reportSentTask')}</p>
+        <p>{t('reportSentText')}, {info?.userName}! {t('reportYourReport')} <strong>«{info?.taskTitle}»</strong> {t('reportSentTask')}</p>
       </div></div>
     );
   }

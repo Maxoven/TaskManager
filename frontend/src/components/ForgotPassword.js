@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { forgotPassword } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
+import { Logo } from './AppHeader';
 import './Auth.css';
 
 function ForgotPassword() {
@@ -22,7 +23,7 @@ function ForgotPassword() {
     return (
       <div className="auth-container">
         <div className="auth-box">
-          <div className="auth-lang-toggle"><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>
+          <div className="auth-lang-toggle"><Logo size={28} /><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>
           <div className="success-icon">✅</div>
           <h2>{t('forgotSentTitle')}</h2>
           <p>{t('forgotSentText')}</p>
@@ -36,7 +37,7 @@ function ForgotPassword() {
   return (
     <div className="auth-container">
       <div className="auth-box">
-        <div className="auth-lang-toggle"><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>
+        <div className="auth-lang-toggle"><Logo size={28} /><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>
         <h1>{t('forgotTitle')}</h1>
         <p style={{ color: '#666', marginBottom: '20px' }}>{t('forgotHint')}</p>
         <form onSubmit={handleSubmit}>

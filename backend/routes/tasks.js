@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const pool = require('../config/database');
+const { withTransaction } = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const { sendTaskAssigned } = require('../services/email');
 
@@ -29,69 +30,114 @@ const upload = multer({
     if (allowed.test(path.extname(file.originalname).toLowerCase()) || allowed.test(file.mimetype)) {
       return cb(null, true);
     }
-    cb(new Error('Неподдерживаемый формат файла'));
+    const err = new Error('Unsupported file format');
+    err.code = 'UNSUPPORTED_FILE';
+    cb(err);
   }
 });
 
-// Хелпер: форматировать задачу из raw
-function formatTask(task, assignees, deps) {
-  return {
-    id: task.id,
-    project_id: task.project_id,
-    status_id: task.status_id,
-    title: task.title,
-    description: task.description,
-    start_date: task.start_date,
-    end_date: task.end_date,
-    created_at: task.created_at,
-    updated_at: task.updated_at,
-    assignees,
-    dependencies: deps || [],
-    attachments_count: parseInt(task.attachments_count) || 0
-  };
+// Поля задачи + исполнители, вложения, отчёт и связи одним запросом
+const TASK_FIELDS = `
+  t.id, t.project_id, t.status_id, t.title, t.description,
+  t.start_date, t.end_date, t.created_at, t.updated_at,
+  COALESCE((
+    SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email) ORDER BY u.name)
+    FROM task_assignees ta JOIN users u ON ta.user_id = u.id
+    WHERE ta.task_id = t.id
+  ), '[]') AS assignees,
+  (SELECT COUNT(*)::int FROM task_attachments f WHERE f.task_id = t.id) AS attachments_count,
+  EXISTS (SELECT 1 FROM task_reports tr WHERE tr.task_id = t.id) AS has_report,
+  COALESCE((
+    SELECT json_agg(json_build_object('depends_on_task_id', d.depends_on_task_id, 'dependency_type', d.dependency_type))
+    FROM task_dependencies d WHERE d.task_id = t.id
+  ), '[]') AS dependencies
+`;
+
+async function fetchTask(db, taskId) {
+  const { rows } = await db.query(`SELECT ${TASK_FIELDS} FROM tasks t WHERE t.id = $1`, [taskId]);
+  return rows[0];
 }
 
-function parseAssignees(raw) {
-  if (!raw) return [];
-  return raw.split('||').map(str => {
-    const [id, name, email] = str.split(':');
-    return { id: parseInt(id), name, email };
-  });
+// Есть ли у пользователя доступ к проекту (владелец или подтверждённый участник)
+async function hasProjectAccess(projectId, userId) {
+  const { rows } = await pool.query(`
+    SELECT 1 FROM projects p
+    WHERE p.id = $1 AND (
+      p.owner_id = $2 OR EXISTS (
+        SELECT 1 FROM project_members pm
+        WHERE pm.project_id = p.id AND pm.user_id = $2 AND pm.status = 'approved'
+      )
+    )
+  `, [projectId, userId]);
+  return rows.length > 0;
+}
+
+// Middleware: задача :id / :taskId существует и пользователь имеет доступ к её проекту
+async function requireTaskAccess(req, res, next) {
+  try {
+    const taskId = req.params.id || req.params.taskId;
+    const { rows } = await pool.query('SELECT project_id FROM tasks WHERE id = $1', [taskId]);
+    if (rows.length === 0) return res.status(404).json({ error: req.t('taskNotFound') });
+    if (!(await hasProjectAccess(rows[0].project_id, req.userId))) {
+      return res.status(403).json({ error: req.t('accessDenied') });
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function saveDependencies(db, taskId, dependencies) {
+  const validDeps = (dependencies || []).filter(d => d.depends_on_task_id);
+  if (validDeps.length === 0) return;
+  await db.query(`
+    INSERT INTO task_dependencies (task_id, depends_on_task_id, dependency_type)
+    SELECT $1, d.dep_id, d.dep_type
+    FROM unnest($2::int[], $3::text[]) AS d(dep_id, dep_type)
+    ON CONFLICT (task_id, depends_on_task_id) DO NOTHING
+  `, [
+    taskId,
+    validDeps.map(d => d.depends_on_task_id),
+    validDeps.map(d => d.dependency_type || 'finish_to_start')
+  ]);
+}
+
+async function notifyAssignees(userIds, taskTitle, projectId) {
+  if (!userIds || userIds.length === 0) return;
+  const { rows: [project] } = await pool.query('SELECT name FROM projects WHERE id = $1', [projectId]);
+  const { rows: users } = await pool.query(
+    'SELECT id, name, email, language FROM users WHERE id = ANY($1::int[])', [userIds]
+  );
+  for (const user of users) {
+    try {
+      await sendTaskAssigned(user, taskTitle, project?.name || '', projectId);
+    } catch (e) {
+      console.error('Ошибка отправки уведомления:', e.message);
+    }
+  }
 }
 
 // ─── Мои задачи (назначенные мне) ─────────────────────────────────────────
 router.get('/my', async (req, res) => {
   try {
-    const [tasksRaw] = await pool.query(`
-      SELECT 
-        t.*,
-        p.name as project_name,
-        s.name as status_name,
-        GROUP_CONCAT(DISTINCT CONCAT(u.id, ':', u.name, ':', u.email) SEPARATOR '||') as assignees_raw,
-        COUNT(DISTINCT ta_files.id) as attachments_count,
-        (SELECT COUNT(*) FROM task_reports tr WHERE tr.task_id = t.id) as has_report
+    const { rows } = await pool.query(`
+      SELECT ${TASK_FIELDS},
+        p.name AS project_name,
+        s.name AS status_name,
+        -- Задача выполнена, если стоит в последней колонке проекта
+        (s.id IS NOT NULL AND s.position = (
+          SELECT MAX(s2.position) FROM statuses s2 WHERE s2.project_id = t.project_id
+        )) AS is_done
       FROM tasks t
-      JOIN task_assignees ta_me ON t.id = ta_me.task_id AND ta_me.user_id = ?
+      JOIN task_assignees ta_me ON t.id = ta_me.task_id AND ta_me.user_id = $1
       JOIN projects p ON t.project_id = p.id
       LEFT JOIN statuses s ON t.status_id = s.id
-      LEFT JOIN task_assignees ta ON t.id = ta.task_id
-      LEFT JOIN users u ON ta.user_id = u.id
-      LEFT JOIN task_attachments ta_files ON t.id = ta_files.task_id
-      GROUP BY t.id
-      ORDER BY t.end_date ASC, t.created_at DESC
+      ORDER BY t.end_date ASC NULLS LAST, t.created_at DESC
     `, [req.userId]);
-
-    const tasks = tasksRaw.map(task => ({
-      ...formatTask(task, parseAssignees(task.assignees_raw), []),
-      project_name: task.project_name,
-      status_name: task.status_name,
-      has_report: task.has_report > 0
-    }));
-
-    res.json(tasks);
+    res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка получения задач' });
+    res.status(500).json({ error: req.t('tasksFetchError') });
   }
 });
 
@@ -99,287 +145,148 @@ router.get('/my', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { projectId, statusId, title, description, startDate, endDate, assigneeIds, dependencies } = req.body;
-    
-    const [access] = await pool.query(`
-      SELECT * FROM projects p
-      LEFT JOIN project_members pm ON p.id = pm.project_id
-      WHERE p.id = ? AND (p.owner_id = ? OR (pm.user_id = ? AND pm.status = 'approved'))
-    `, [projectId, req.userId, req.userId]);
 
-    if (access.length === 0) {
-      return res.status(403).json({ error: 'Доступ запрещён' });
+    if (!(await hasProjectAccess(projectId, req.userId))) {
+      return res.status(403).json({ error: req.t('accessDenied') });
     }
 
-    const [result] = await pool.query(
-      'INSERT INTO tasks (project_id, status_id, title, description, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?)',
-      [projectId, statusId, title, description, startDate || null, endDate || null]
-    );
-    const taskId = result.insertId;
-
-    if (assigneeIds && assigneeIds.length > 0) {
-      const values = assigneeIds.map(uid => [taskId, uid]);
-      await pool.query('INSERT INTO task_assignees (task_id, user_id) VALUES ?', [values]);
-
-      // Email уведомления о новой задаче
-      const [projectInfo] = await pool.query('SELECT name FROM projects WHERE id = ?', [projectId]);
-      const projectName = projectInfo[0]?.name || '';
-      const [assignees] = await pool.query(
-        'SELECT u.id, u.name, u.email FROM users u WHERE u.id IN (?)',
-        [assigneeIds]
+    const taskId = await withTransaction(async (client) => {
+      const { rows: [created] } = await client.query(
+        `INSERT INTO tasks (project_id, status_id, title, description, start_date, end_date)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [projectId, statusId, title, description, startDate || null, endDate || null]
       );
-      for (const assignee of assignees) {
-        try {
-          await sendTaskAssigned(assignee.email, assignee.name, title, projectName, projectId);
-        } catch (e) {
-          console.error('Ошибка отправки уведомления:', e.message);
-        }
+      if (assigneeIds && assigneeIds.length > 0) {
+        await client.query(
+          'INSERT INTO task_assignees (task_id, user_id) SELECT $1, unnest($2::int[]) ON CONFLICT DO NOTHING',
+          [created.id, assigneeIds]
+        );
       }
-    }
+      await saveDependencies(client, created.id, dependencies);
+      return created.id;
+    });
 
-    if (dependencies && dependencies.length > 0) {
-      const validDeps = dependencies.filter(d => d.depends_on_task_id);
-      if (validDeps.length > 0) {
-        const depValues = validDeps.map(d => [taskId, d.depends_on_task_id, d.dependency_type || 'finish_to_start']);
-        await pool.query('INSERT INTO task_dependencies (task_id, depends_on_task_id, dependency_type) VALUES ?', [depValues]);
-      }
-    }
+    // Email уведомления о новой задаче
+    await notifyAssignees(assigneeIds, title, projectId);
 
-    const [tasksRaw] = await pool.query(`
-      SELECT t.*,
-        GROUP_CONCAT(DISTINCT CONCAT(u.id, ':', u.name, ':', u.email) SEPARATOR '||') as assignees_raw,
-        COUNT(DISTINCT ta_files.id) as attachments_count
-      FROM tasks t
-      LEFT JOIN task_assignees ta ON t.id = ta.task_id
-      LEFT JOIN users u ON ta.user_id = u.id
-      LEFT JOIN task_attachments ta_files ON t.id = ta_files.task_id
-      WHERE t.id = ? GROUP BY t.id
-    `, [taskId]);
-
-    const [deps] = await pool.query(
-      'SELECT depends_on_task_id, dependency_type FROM task_dependencies WHERE task_id = ?',
-      [taskId]
-    );
-
-    res.status(201).json(formatTask(tasksRaw[0], parseAssignees(tasksRaw[0].assignees_raw), deps));
+    res.status(201).json(await fetchTask(pool, taskId));
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка создания задачи' });
+    res.status(500).json({ error: req.t('taskCreateError') });
   }
 });
 
 // ─── Обновить задачу ────────────────────────────────────────────────────────
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requireTaskAccess, async (req, res) => {
   try {
     const { id } = req.params;
     const { statusId, title, description, startDate, endDate, assigneeIds, dependencies } = req.body;
 
-    const updates = [];
-    const values = [];
-    if (statusId !== undefined) { updates.push('status_id = ?'); values.push(statusId); }
-    if (title !== undefined) { updates.push('title = ?'); values.push(title); }
-    if (description !== undefined) { updates.push('description = ?'); values.push(description); }
-    if (startDate !== undefined) { updates.push('start_date = ?'); values.push(startDate || null); }
-    if (endDate !== undefined) { updates.push('end_date = ?'); values.push(endDate || null); }
+    const addedIds = await withTransaction(async (client) => {
+      const updates = [];
+      const values = [];
+      const set = (column, value) => { values.push(value); updates.push(`${column} = $${values.length}`); };
+      if (statusId !== undefined) set('status_id', statusId);
+      if (title !== undefined) set('title', title);
+      if (description !== undefined) set('description', description);
+      if (startDate !== undefined) set('start_date', startDate || null);
+      if (endDate !== undefined) set('end_date', endDate || null);
 
-    if (updates.length > 0) {
-      values.push(id);
-      await pool.query(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`, values);
-    }
-
-    if (assigneeIds !== undefined) {
-      // Получаем старых исполнителей для сравнения
-      const [oldAssignees] = await pool.query(
-        'SELECT user_id FROM task_assignees WHERE task_id = ?', [id]
-      );
-      const oldIds = oldAssignees.map(a => a.user_id);
-      const newIds = assigneeIds;
-      const addedIds = newIds.filter(uid => !oldIds.includes(uid));
-
-      await pool.query('DELETE FROM task_assignees WHERE task_id = ?', [id]);
-      if (newIds.length > 0) {
-        const vals = newIds.map(uid => [id, uid]);
-        await pool.query('INSERT INTO task_assignees (task_id, user_id) VALUES ?', [vals]);
+      if (updates.length > 0) {
+        values.push(id);
+        await client.query(`UPDATE tasks SET ${updates.join(', ')} WHERE id = $${values.length}`, values);
       }
 
-      // Уведомляем только новых исполнителей
-      if (addedIds.length > 0) {
-        const [taskInfo] = await pool.query(`
-          SELECT t.title, p.name as project_name, t.project_id
-          FROM tasks t JOIN projects p ON t.project_id = p.id WHERE t.id = ?
-        `, [id]);
-        if (taskInfo.length > 0) {
-          const [newAssignees] = await pool.query(
-            'SELECT name, email FROM users WHERE id IN (?)', [addedIds]
+      let added = [];
+      if (assigneeIds !== undefined) {
+        // Получаем старых исполнителей для сравнения
+        const { rows: oldAssignees } = await client.query(
+          'SELECT user_id FROM task_assignees WHERE task_id = $1', [id]
+        );
+        const oldIds = oldAssignees.map(a => a.user_id);
+        added = assigneeIds.filter(uid => !oldIds.includes(uid));
+
+        await client.query('DELETE FROM task_assignees WHERE task_id = $1', [id]);
+        if (assigneeIds.length > 0) {
+          await client.query(
+            'INSERT INTO task_assignees (task_id, user_id) SELECT $1, unnest($2::int[]) ON CONFLICT DO NOTHING',
+            [id, assigneeIds]
           );
-          for (const a of newAssignees) {
-            try {
-              await sendTaskAssigned(a.email, a.name, taskInfo[0].title, taskInfo[0].project_name, taskInfo[0].project_id);
-            } catch (e) {
-              console.error('Ошибка уведомления:', e.message);
-            }
-          }
         }
       }
-    }
 
-    if (dependencies !== undefined) {
-      await pool.query('DELETE FROM task_dependencies WHERE task_id = ?', [id]);
-      const validDeps = dependencies.filter(d => d.depends_on_task_id);
-      if (validDeps.length > 0) {
-        const depValues = validDeps.map(d => [id, d.depends_on_task_id, d.dependency_type || 'finish_to_start']);
-        await pool.query('INSERT INTO task_dependencies (task_id, depends_on_task_id, dependency_type) VALUES ?', [depValues]);
+      if (dependencies !== undefined) {
+        await client.query('DELETE FROM task_dependencies WHERE task_id = $1', [id]);
+        await saveDependencies(client, id, dependencies);
       }
-    }
+      return added;
+    });
 
-    const [tasksRaw] = await pool.query(`
-      SELECT t.*,
-        GROUP_CONCAT(DISTINCT CONCAT(u.id, ':', u.name, ':', u.email) SEPARATOR '||') as assignees_raw,
-        COUNT(DISTINCT ta_files.id) as attachments_count
-      FROM tasks t
-      LEFT JOIN task_assignees ta ON t.id = ta.task_id
-      LEFT JOIN users u ON ta.user_id = u.id
-      LEFT JOIN task_attachments ta_files ON t.id = ta_files.task_id
-      WHERE t.id = ? GROUP BY t.id
-    `, [id]);
+    const task = await fetchTask(pool, id);
 
-    const [deps] = await pool.query(
-      'SELECT depends_on_task_id, dependency_type FROM task_dependencies WHERE task_id = ?', [id]
-    );
+    // Уведомляем только новых исполнителей
+    await notifyAssignees(addedIds, task.title, task.project_id);
 
-    res.json(formatTask(tasksRaw[0], parseAssignees(tasksRaw[0].assignees_raw), deps));
+    res.json(task);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка обновления задачи' });
+    res.status(500).json({ error: req.t('taskUpdateError') });
   }
 });
 
 // ─── Удалить задачу ─────────────────────────────────────────────────────────
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireTaskAccess, async (req, res) => {
   try {
     const { id } = req.params;
-    const [attachments] = await pool.query('SELECT filename FROM task_attachments WHERE task_id = ?', [id]);
+    const { rows: attachments } = await pool.query(
+      'SELECT filename FROM task_attachments WHERE task_id = $1', [id]
+    );
     attachments.forEach(att => {
       const filePath = path.join(__dirname, '../uploads', att.filename);
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     });
-    await pool.query('DELETE FROM tasks WHERE id = ?', [id]);
-    res.json({ message: 'Задача удалена' });
+    await pool.query('DELETE FROM tasks WHERE id = $1', [id]);
+    res.json({ message: req.t('taskDeleted') });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка удаления задачи' });
+    res.status(500).json({ error: req.t('taskDeleteError') });
   }
 });
 
 // ─── Отчёты ─────────────────────────────────────────────────────────────────
-
-// Получить отчёт по токену (страница отправки отчёта)
-router.get('/report-token/:token', async (req, res) => {
-  try {
-    const { token } = req.params;
-    const [tokens] = await pool.query(`
-      SELECT rt.*, t.title as task_title, p.name as project_name,
-             u.name as user_name
-      FROM report_tokens rt
-      JOIN tasks t ON rt.task_id = t.id
-      JOIN projects p ON t.project_id = p.id
-      JOIN users u ON rt.user_id = u.id
-      WHERE rt.token = ? AND rt.expires_at > NOW()
-    `, [token]);
-
-    if (tokens.length === 0) {
-      return res.status(404).json({ error: 'Ссылка недействительна или истекла' });
-    }
-
-    // Проверяем, не отправлен ли уже отчёт
-    const [reports] = await pool.query(
-      'SELECT id FROM task_reports WHERE task_id = ? AND user_id = ?',
-      [tokens[0].task_id, tokens[0].user_id]
-    );
-
-    res.json({
-      taskId: tokens[0].task_id,
-      taskTitle: tokens[0].task_title,
-      projectName: tokens[0].project_name,
-      userName: tokens[0].user_name,
-      alreadySubmitted: reports.length > 0
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Ошибка' });
-  }
-});
-
-// Отправить отчёт по токену (без авторизации — по magic link)
-router.post('/report-token/:token', async (req, res) => {
-  try {
-    const { token } = req.params;
-    const { reportText } = req.body;
-
-    if (!reportText || reportText.trim().length === 0) {
-      return res.status(400).json({ error: 'Текст отчёта не может быть пустым' });
-    }
-
-    const [tokens] = await pool.query(
-      'SELECT * FROM report_tokens WHERE token = ? AND expires_at > NOW()',
-      [token]
-    );
-    if (tokens.length === 0) {
-      return res.status(404).json({ error: 'Ссылка недействительна или истекла' });
-    }
-
-    const rt = tokens[0];
-
-    // Проверяем дубликат
-    const [existing] = await pool.query(
-      'SELECT id FROM task_reports WHERE task_id = ? AND user_id = ?',
-      [rt.task_id, rt.user_id]
-    );
-    if (existing.length > 0) {
-      return res.status(400).json({ error: 'Отчёт уже был отправлен' });
-    }
-
-    await pool.query(
-      'INSERT INTO task_reports (task_id, user_id, report_text) VALUES (?, ?, ?)',
-      [rt.task_id, rt.user_id, reportText.trim()]
-    );
-
-    res.json({ message: 'Отчёт успешно отправлен' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Ошибка отправки отчёта' });
-  }
-});
+// Публичные маршруты по magic link — в routes/reports.js
 
 // Получить отчёты по задаче (для авторизованных пользователей)
-router.get('/:id/reports', async (req, res) => {
+router.get('/:id/reports', requireTaskAccess, async (req, res) => {
   try {
     const { id } = req.params;
-    const [reports] = await pool.query(`
-      SELECT tr.*, u.name as user_name, u.email as user_email
+    const { rows } = await pool.query(`
+      SELECT tr.*, u.name AS user_name, u.email AS user_email
       FROM task_reports tr
       JOIN users u ON tr.user_id = u.id
-      WHERE tr.task_id = ?
+      WHERE tr.task_id = $1
       ORDER BY tr.submitted_at DESC
     `, [id]);
-    res.json(reports);
+    res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка получения отчётов' });
+    res.status(500).json({ error: req.t('reportsFetchError') });
   }
 });
 
 // ─── Вложения ───────────────────────────────────────────────────────────────
 
-router.post('/:id/attachments', upload.single('file'), async (req, res) => {
+router.post('/:id/attachments', requireTaskAccess, upload.single('file'), async (req, res) => {
   try {
     const { id } = req.params;
-    if (!req.file) return res.status(400).json({ error: 'Файл не загружен' });
-    const [result] = await pool.query(
-      'INSERT INTO task_attachments (task_id, filename, original_name, file_size, uploaded_by) VALUES (?, ?, ?, ?, ?)',
+    if (!req.file) return res.status(400).json({ error: req.t('fileNotUploaded') });
+    const { rows: [attachment] } = await pool.query(
+      `INSERT INTO task_attachments (task_id, filename, original_name, file_size, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
       [id, req.file.filename, req.file.originalname, req.file.size, req.userId]
     );
     res.status(201).json({
-      id: result.insertId,
+      id: attachment.id,
       filename: req.file.filename,
       original_name: req.file.originalname,
       file_size: req.file.size
@@ -387,59 +294,57 @@ router.post('/:id/attachments', upload.single('file'), async (req, res) => {
   } catch (error) {
     console.error(error);
     if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    res.status(500).json({ error: 'Ошибка загрузки файла' });
+    res.status(500).json({ error: req.t('fileUploadError') });
   }
 });
 
-router.get('/:id/attachments', async (req, res) => {
+router.get('/:id/attachments', requireTaskAccess, async (req, res) => {
   try {
     const { id } = req.params;
-    const [attachments] = await pool.query(`
-      SELECT ta.*, u.name as uploader_name
+    const { rows } = await pool.query(`
+      SELECT ta.*, u.name AS uploader_name
       FROM task_attachments ta
       LEFT JOIN users u ON ta.uploaded_by = u.id
-      WHERE ta.task_id = ?
+      WHERE ta.task_id = $1
       ORDER BY ta.uploaded_at DESC
     `, [id]);
-    res.json(attachments);
+    res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка получения файлов' });
+    res.status(500).json({ error: req.t('filesFetchError') });
   }
 });
 
-router.get('/:taskId/attachments/:fileId/download', async (req, res) => {
+router.get('/:taskId/attachments/:fileId/download', requireTaskAccess, async (req, res) => {
   try {
     const { taskId, fileId } = req.params;
-    const [files] = await pool.query(
-      'SELECT * FROM task_attachments WHERE id = ? AND task_id = ?',
-      [fileId, taskId]
+    const { rows: files } = await pool.query(
+      'SELECT * FROM task_attachments WHERE id = $1 AND task_id = $2', [fileId, taskId]
     );
-    if (files.length === 0) return res.status(404).json({ error: 'Файл не найден' });
+    if (files.length === 0) return res.status(404).json({ error: req.t('fileNotFound') });
     const filePath = path.join(__dirname, '../uploads', files[0].filename);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Файл не найден на сервере' });
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: req.t('fileMissingOnServer') });
     res.download(filePath, files[0].original_name);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка скачивания файла' });
+    res.status(500).json({ error: req.t('fileDownloadError') });
   }
 });
 
-router.delete('/:taskId/attachments/:fileId', async (req, res) => {
+router.delete('/:taskId/attachments/:fileId', requireTaskAccess, async (req, res) => {
   try {
     const { taskId, fileId } = req.params;
-    const [files] = await pool.query(
-      'SELECT * FROM task_attachments WHERE id = ? AND task_id = ?',
-      [fileId, taskId]
+    const { rows: files } = await pool.query(
+      'SELECT * FROM task_attachments WHERE id = $1 AND task_id = $2', [fileId, taskId]
     );
-    if (files.length === 0) return res.status(404).json({ error: 'Файл не найден' });
+    if (files.length === 0) return res.status(404).json({ error: req.t('fileNotFound') });
     const filePath = path.join(__dirname, '../uploads', files[0].filename);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    await pool.query('DELETE FROM task_attachments WHERE id = ?', [fileId]);
-    res.json({ message: 'Файл удалён' });
+    await pool.query('DELETE FROM task_attachments WHERE id = $1', [fileId]);
+    res.json({ message: req.t('fileDeleted') });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка удаления файла' });
+    res.status(500).json({ error: req.t('fileDeleteError') });
   }
 });
 

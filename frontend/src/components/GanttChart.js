@@ -2,32 +2,23 @@ import React, { useState, useRef, useEffect } from 'react';
 import { format, addDays, subDays, differenceInDays, startOfDay, eachMonthOfInterval, endOfMonth } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useLanguage } from '../context/LanguageContext';
+import { parseDate, formatDate } from '../utils/date';
 import './GanttChart.css';
 
 const PERIOD_DAYS = 365;
 const DAY_PX = 16;         // пикселей на день
 const ROW_H = 44;          // высота строки
-const SIDEBAR_W = 200;     // ширина колонки задач
-const HEADER_H = 36;       // высота шапки
 
 function GanttChart({ tasks, onTaskClick, members }) {
   const { t, lang } = useLanguage();
   const dateLocale = lang === 'ru' ? ru : undefined;
   const today = startOfDay(new Date());
-  const [viewStart] = useState(subDays(today, 20));
+  const [viewStart] = useState(() => subDays(today, 60));
   const [filterAssignee, setFilterAssignee] = useState('all');
   const scrollRef = useRef(null);
 
   const viewEnd = addDays(viewStart, PERIOD_DAYS - 1);
   const totalWidth = PERIOD_DAYS * DAY_PX;
-
-  // Скролл к сегодняшнему дню при загрузке
-  useEffect(() => {
-    if (scrollRef.current) {
-      const todayPx = differenceInDays(today, viewStart) * DAY_PX;
-      scrollRef.current.scrollLeft = Math.max(0, todayPx - 100);
-    }
-  }, []);
 
   const tasksWithDates = tasks
     .filter(t => t.start_date && t.end_date)
@@ -37,7 +28,19 @@ function GanttChart({ tasks, onTaskClick, members }) {
     });
 
   // Позиция в пикселях
-  const dateToPx = (date) => differenceInDays(startOfDay(new Date(date)), viewStart) * DAY_PX;
+  const dateToPx = (date) => differenceInDays(startOfDay(parseDate(date)), viewStart) * DAY_PX;
+
+  // Скролл к сегодняшнему дню при загрузке
+  useEffect(() => {
+    if (scrollRef.current) {
+      // Показываем «сегодня», но так, чтобы начало самой ранней задачи тоже было видно
+      const todayPx = differenceInDays(today, viewStart) * DAY_PX;
+      const starts = tasks.filter(t => t.start_date).map(t => dateToPx(t.start_date));
+      const earliest = starts.length ? Math.min(...starts) : todayPx;
+      const target = Math.max(Math.min(todayPx - 100, earliest - 40), todayPx - scrollRef.current.clientWidth + 160);
+      scrollRef.current.scrollLeft = Math.max(0, target);
+    }
+  }, []);
 
   const getTaskBar = (task) => {
     const left = dateToPx(task.start_date);
@@ -45,15 +48,10 @@ function GanttChart({ tasks, onTaskClick, members }) {
     return { left, width: Math.max(4, right - left) };
   };
 
-  const isTaskDone = (task) => {
-    const s = (task.status_name || '').toLowerCase();
-    return s === 'готово' || s === 'done' || s === 'выполнено';
-  };
-
   const getTaskColor = (task) => {
-    if (isTaskDone(task)) return '#66bb6a';
+    if (task.is_done) return '#66bb6a';
     if (task.has_report) return '#26a69a';
-    if (task.end_date && new Date(task.end_date) < today) return '#ef5350';
+    if (task.end_date && parseDate(task.end_date) < today) return '#ef5350';
     return '#42a5f5';
   };
 
@@ -142,7 +140,7 @@ function GanttChart({ tasks, onTaskClick, members }) {
 
           {/* Фиксированная колонка с названиями */}
           <div className="gantt-sidebar-col">
-            <div className="gantt-sidebar-header">Задача</div>
+            <div className="gantt-sidebar-header">{t('ganttTaskColumn')}</div>
             {tasksWithDates.length === 0 ? null : tasksWithDates.map(task => (
               <div key={task.id} className="gantt-sidebar">
                 <div className="gantt-task-info">
@@ -223,7 +221,7 @@ function GanttChart({ tasks, onTaskClick, members }) {
                       background: getTaskColor(task)
                     }}
                     onClick={() => onTaskClick(task)}
-                    title={`${task.title}\n${format(new Date(task.start_date), 'dd.MM.yyyy')} – ${format(new Date(task.end_date), 'dd.MM.yyyy')}`}
+                    title={`${task.title}\n${formatDate(task.start_date, lang)} – ${formatDate(task.end_date, lang)}`}
                   >
                     <span className="gantt-task-bar-label">{task.title}</span>
                   </div>

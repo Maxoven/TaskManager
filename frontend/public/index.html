@@ -3,15 +3,36 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta
-      name="description"
-      content="Простой таск-менеджер для команды"
-    />
+    <meta name="theme-color" content="#25b84c" />
+    <meta name="description" content="Task Manager — задачи, канбан и диаграмма Ганта для команды" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" id="favicon" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <title>Task Manager</title>
+    <script>
+      // Фавикон как у Google Календаря: зелёный квадрат с сегодняшним числом.
+      // Перерисовывается в полночь, если вкладка открыта долго.
+      (function () {
+        function draw() {
+          var day = new Date().getDate();
+          var svg =
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">' +
+            '<rect width="64" height="64" rx="14" fill="#25b84c"/>' +
+            '<text x="32" y="46" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" ' +
+            'font-size="' + (day > 9 ? 38 : 42) + '" font-weight="700" fill="#fff">' + day + '</text></svg>';
+          var link = document.getElementById('favicon');
+          link.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+          var now = new Date();
+          var midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+          setTimeout(draw, midnight - now);
+        }
+        draw();
+      })();
+    </script>
   </head>
   <body>
-    <noscript>Вам нужно включить JavaScript для работы приложения.</noscript>
+    <noscript>Для работы приложения нужен JavaScript / JavaScript is required.</noscript>
     <div id="root"></div>
   </body>
 </html>

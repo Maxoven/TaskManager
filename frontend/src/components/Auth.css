@@ -3,24 +3,29 @@
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background:
+    radial-gradient(circle at 15% 10%, rgba(37, 184, 76, 0.12), transparent 40%),
+    radial-gradient(circle at 85% 90%, rgba(37, 184, 76, 0.10), transparent 40%),
+    var(--bg);
   padding: 20px;
 }
 
 .auth-box {
   background: white;
   padding: 40px;
-  border-radius: 12px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 40px rgba(16, 24, 40, 0.08);
   width: 100%;
   max-width: 400px;
 }
 
 .auth-box h1 {
-  margin-bottom: 30px;
-  color: #333;
-  text-align: center;
-  font-size: 28px;
+  margin-bottom: 24px;
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .auth-box form {
@@ -37,21 +42,24 @@
 .auth-link {
   text-align: center;
   color: #666;
+  margin-top: 10px;
+}
+
+/* Иконка на экранах успеха/ошибки */
+.success-icon {
+  font-size: 48px;
+  text-align: center;
+  margin-bottom: 12px;
 }
 
 .auth-link a {
-  color: #0066ff;
+  color: var(--accent);
   text-decoration: none;
   font-weight: 500;
 }
 
 .auth-link a:hover {
   text-decoration: underline;
-}
-
-  font-size: 48px;
-  text-align: center;
-  margin-bottom: 12px;
 }
 
 .report-box {
@@ -80,17 +88,11 @@
   margin: 0;
 }
 
-/* Language toggle button */
-.auth-lang-toggle { text-align: right; margin-bottom: 8px; }
-.lang-btn {
-  background: none;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #555;
-  cursor: pointer;
-  transition: all 0.2s;
+/* Language toggle (сама кнопка .lang-btn — в App.css) */
+.auth-lang-toggle { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+
+@media (max-width: 480px) {
+  .auth-container { padding: 12px; align-items: flex-start; padding-top: 32px; }
+  .auth-box { padding: 24px 20px; }
+  .auth-box h1 { font-size: 22px; margin-bottom: 20px; }
 }
-.lang-btn:hover { border-color: #25b84c; color: #25b84c; }

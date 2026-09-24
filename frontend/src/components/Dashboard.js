@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { useLanguage } from '../context/LanguageContext';
+import AppHeader from './AppHeader';
+import { formatDate, deadlineState } from '../utils/date';
+import useEscape from '../utils/useEscape';
 import {
   getProjects, createProject, updateProject, deleteProject,
   getPendingInvitations, respondToInvitation, reorderProjects, getMyTasks,
@@ -9,8 +12,29 @@ import {
 } from '../services/api';
 import './Dashboard.css';
 
+// Прогресс проекта на карточке: выполнено / всего и просрочки
+function ProjectStats({ project }) {
+  const { t } = useLanguage();
+  const total = project.tasks_total || 0;
+  const done = project.tasks_done || 0;
+  const percent = total ? Math.round((done / total) * 100) : 0;
+  return (
+    <div className="project-stats">
+      <div className="project-progress" aria-hidden="true">
+        <div className="project-progress-bar" style={{ width: `${percent}%` }} />
+      </div>
+      <div className="project-stats-row">
+        <span>{total ? t('projectTasksDone', { done, total }) : t('projectNoTasks')}</span>
+        {project.tasks_overdue > 0 && (
+          <span className="project-overdue">⚠️ {t('projectOverdue', { count: project.tasks_overdue })}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({ user, onLogout }) {
-  const { t, lang, toggleLang } = useLanguage();
+  const { t, lang } = useLanguage();
   const [projects, setProjects] = useState([]);
   const [invitations, setInvitations] = useState([]);
   const [myTasks, setMyTasks] = useState([]);
@@ -32,6 +56,8 @@ function Dashboard({ user, onLogout }) {
   const navigate = useNavigate();
 
   useEffect(() => { loadData(); }, []);
+
+  useEscape(() => { setShowCreateModal(false); setEditProject(null); }, showCreateModal || !!editProject);
 
   const loadData = async () => {
     try {
@@ -58,7 +84,7 @@ function Dashboard({ user, onLogout }) {
       setNewProject({ name: '', description: '' });
       loadData();
     } catch (error) {
-      console.error('Ошибка создания проекта:', error);
+      alert(error.response?.data?.error || t('projectCreateError'));
     }
   };
 
@@ -75,18 +101,18 @@ function Dashboard({ user, onLogout }) {
       setEditProject(null);
       loadData();
     } catch (error) {
-      alert(error.response?.data?.error || 'Ошибка обновления проекта');
+      alert(error.response?.data?.error || t('projectUpdateError'));
     }
   };
 
   const handleDeleteProject = async (projectId, projectName, e) => {
     e.stopPropagation();
-    if (!window.confirm(`Удалить проект "${projectName}"? Это действие нельзя отменить.`)) return;
+    if (!window.confirm(t('deleteProjectPrompt', { name: projectName }))) return;
     try {
       await deleteProject(projectId);
       loadData();
     } catch (error) {
-      alert(error.response?.data?.error || 'Ошибка удаления проекта');
+      alert(error.response?.data?.error || t('projectDeleteError'));
     }
   };
 
@@ -124,8 +150,8 @@ function Dashboard({ user, onLogout }) {
   const handleSaveSort = async () => {
     try {
       await reorderProjects(sortedProjects.map(p => p.id));
-      setProjects(sortedProjects);
       setSortMode(false);
+      loadData();
     } catch (error) {
       console.error('Ошибка сохранения порядка:', error);
     }
@@ -136,11 +162,11 @@ function Dashboard({ user, onLogout }) {
     setTeamError(''); setTeamSuccess(''); setTeamLoading(true);
     try {
       const res = await addTeamMember(teamEmail);
-      setTeamSuccess(`${res.data.member.name} добавлен в команду`);
+      setTeamSuccess(t('teamInviteSent', { name: res.data.member.name }));
       setTeamEmail('');
       loadData();
     } catch (error) {
-      setTeamError(error.response?.data?.error || 'Ошибка добавления');
+      setTeamError(error.response?.data?.error || t('teamAddError'));
     } finally {
       setTeamLoading(false);
     }
@@ -152,30 +178,34 @@ function Dashboard({ user, onLogout }) {
       await removeTeamMember(memberId);
       loadData();
     } catch (error) {
-      alert('Ошибка удаления участника');
+      alert(error.response?.data?.error || t('teamRemoveError'));
     }
   };
 
-  const getTaskDeadlineClass = (task) => {
-    if (!task.end_date) return '';
-    const diff = (new Date(task.end_date) - new Date()) / (1000 * 60 * 60 * 24);
-    if (diff < 0) return 'overdue';
-    if (diff <= 3) return 'due-soon';
-    return '';
-  };
+  if (loading) return <div className="loading">{t('loading')}</div>;
 
-  if (loading) return <div className="loading">Загрузка...</div>;
+  const myProjects = projects.filter(p => p.owner_id === user?.id);
+  const memberProjects = projects.filter(p => p.owner_id !== user?.id);
+  const activeTasks = myTasks.filter(task => !task.is_done);
+  const doneTasks = myTasks.filter(task => task.is_done);
+  const overdueCount = activeTasks.filter(task => deadlineState(task) === 'overdue').length;
+
+  // Проекты команды — группируем по владельцу, сохраняя порядок владельца
+  const byOwner = [];
+  memberProjects.forEach(p => {
+    let group = byOwner.find(g => g.ownerId === p.owner_id);
+    if (!group) { group = { ownerId: p.owner_id, name: p.owner_name, projects: [] }; byOwner.push(group); }
+    group.projects.push(p);
+  });
 
   return (
     <div className="dashboard">
-      <header className="dashboard-header">
-        <h1>Task Manager</h1>
-        <div className="user-info">
-          <span>{t('hi')}, {user?.name}!</span>
-          <button onClick={toggleLang} className="lang-btn" style={{marginRight:8}}>{lang === 'ru' ? 'EN' : 'RU'}</button>
-          <button onClick={onLogout} className="btn-secondary">{t('logout')}</button>
-        </div>
-      </header>
+      <AppHeader user={user} onLogout={onLogout} />
+      <main className="dashboard-main">
+      <div className="dashboard-greeting">
+        <h1>{t('hi')}, {user?.name}!</h1>
+        <p>{t('dashboardSubtitle', { active: activeTasks.length, overdue: overdueCount })}</p>
+      </div>
 
       {/* Приглашения в проекты */}
       {invitations.length > 0 && (
@@ -184,10 +214,10 @@ function Dashboard({ user, onLogout }) {
           <div className="invitations-list">
             {invitations.map(inv => (
               <div key={inv.id} className="invitation-card">
-                <div>
+                <div className="invitation-body">
                   <h3>{inv.name}</h3>
                   <p>{t('inviteFrom')} {inv.owner_name}</p>
-                  <p className="invitation-desc">{inv.description}</p>
+                  {inv.description && <p className="invitation-desc">{inv.description}</p>}
                 </div>
                 <div className="invitation-actions">
                   <button onClick={() => handleInvitationResponse(inv.id, 'approve')} className="btn-success">{t('inviteAccept')}</button>
@@ -206,7 +236,7 @@ function Dashboard({ user, onLogout }) {
           <div className="invitations-list">
             {teamInvitations.map(inv => (
               <div key={inv.owner_id} className="invitation-card team-invitation-card">
-                <div>
+                <div className="invitation-body">
                   <h3>👥 {inv.owner_name} {t('teamInviteText')}</h3>
                   <p>{t('teamInviteHint')} {inv.owner_name}</p>
                 </div>
@@ -222,13 +252,11 @@ function Dashboard({ user, onLogout }) {
 
       <div className="dashboard-tabs">
         <button className={`tab-btn ${activeTab === 'projects' ? 'active' : ''}`} onClick={() => setActiveTab('projects')}>
-          📁 Проекты
+          {t('tabProjects')}
         </button>
         <button className={`tab-btn ${activeTab === 'mytasks' ? 'active' : ''}`} onClick={() => setActiveTab('mytasks')}>
           {t('tabMyTasks')}
-          {myTasks.filter(t => getTaskDeadlineClass(t) === 'overdue').length > 0 && (
-            <span className="badge-count">{myTasks.filter(t => getTaskDeadlineClass(t) === 'overdue').length}</span>
-          )}
+          {overdueCount > 0 && <span className="badge-count">{overdueCount}</span>}
         </button>
         <button className={`tab-btn ${activeTab === 'team' ? 'active' : ''}`} onClick={() => setActiveTab('team')}>
           {t('tabTeam')}
@@ -241,13 +269,13 @@ function Dashboard({ user, onLogout }) {
           {sortMode ? (
             <>
               <div className="section-header">
-                <h2>Изменение порядка проектов</h2>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <h2>{t('reorderTitle')}</h2>
+                <div className="section-actions">
                   <button onClick={() => setSortMode(false)} className="btn-secondary">{t('cancelOrder')}</button>
-                  <button onClick={handleSaveSort} className="btn-primary">💾 Сохранить порядок</button>
+                  <button onClick={handleSaveSort} className="btn-primary">{t('saveOrderBtn')}</button>
                 </div>
               </div>
-              <p className="hint-text">Перетащите проекты в нужном порядке</p>
+              <p className="hint-text">{t('reorderHint')}</p>
               <DragDropContext onDragEnd={handleSortDragEnd}>
                 <Droppable droppableId="sort-list">
                   {(provided) => (
@@ -278,122 +306,100 @@ function Dashboard({ user, onLogout }) {
             <>
               <div className="section-header">
                 <h2>{t('myProjects')}</h2>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {projects.filter(p => p.owner_id === user?.id).length > 1 && (
-                    <button onClick={handleStartSort} className="btn-secondary">⇅ Упорядочить</button>
+                <div className="section-actions">
+                  {myProjects.length > 1 && (
+                    <button onClick={handleStartSort} className="btn-secondary">{t('reorderBtn')}</button>
                   )}
-                  <button onClick={() => setShowCreateModal(true)} className="btn-primary">+ Создать проект</button>
+                  <button onClick={() => setShowCreateModal(true)} className="btn-primary">{t('createProject')}</button>
                 </div>
               </div>
 
               {/* Мои проекты */}
-              {(() => {
-                const myProjects = projects.filter(p => p.owner_id === user?.id);
-                return myProjects.length === 0 ? (
-                  <div className="empty-state"><p>{t('noProjects')}</p><p>{t('noProjectsHint')}</p></div>
-                ) : (
+              {myProjects.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon">📁</div>
+                  <p className="empty-state-title">{t('noProjects')}</p>
+                  <p>{t('noProjectsHint')}</p>
+                  <button onClick={() => setShowCreateModal(true)} className="btn-primary">{t('createProject')}</button>
+                </div>
+              ) : (
+                <div className="projects-grid">
+                  {myProjects.map((project) => (
+                    <div key={project.id} className="project-card" onClick={() => navigate(`/project/${project.id}`)}>
+                      <div className="project-card-header">
+                        <h3>{project.name}</h3>
+                        <div className="project-card-actions">
+                          <button onClick={(e) => handleEditProject(project, e)} className="btn-icon-sm" title={t('edit')}>✏️</button>
+                          <button onClick={(e) => handleDeleteProject(project.id, project.name, e)} className="btn-icon-sm btn-danger-sm" title={t('delete')}>🗑️</button>
+                        </div>
+                      </div>
+                      {project.description && <p className="project-card-desc">{project.description}</p>}
+                      <ProjectStats project={project} />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Проекты команды */}
+              {byOwner.map(group => (
+                <div key={group.ownerId} className="owner-group">
+                  <h3 className="owner-group-title">👥 {t('projectsOf')} {group.name}</h3>
                   <div className="projects-grid">
-                    {myProjects.map((project) => (
-                      <div key={project.id} className="project-card" onClick={() => navigate(`/project/${project.id}`)}>
+                    {group.projects.map(project => (
+                      <div key={project.id} className="project-card project-card-member" onClick={() => navigate(`/project/${project.id}`)}>
                         <div className="project-card-header">
                           <h3>{project.name}</h3>
-                          <div className="project-card-actions">
-                            <button onClick={(e) => handleEditProject(project, e)} className="btn-icon-sm" title="Редактировать">✏️</button>
-                            <button onClick={(e) => handleDeleteProject(project.id, project.name, e)} className="btn-icon-sm btn-danger-sm" title="Удалить">🗑️</button>
-                          </div>
                         </div>
-                        <p>{project.description}</p>
-                        <div className="project-meta">
-                          <span className="role-badge owner">{t('roleBadgeOwner')}</span>
-                        </div>
+                        {project.description && <p className="project-card-desc">{project.description}</p>}
+                        <ProjectStats project={project} />
                       </div>
                     ))}
                   </div>
-                );
-              })()}
-
-              {/* Проекты команды — группируем по владельцу */}
-              {(() => {
-                const memberProjects = projects.filter(p => p.owner_id !== user?.id);
-                if (memberProjects.length === 0) return null;
-
-                // Группируем по owner_id
-                const byOwner = {};
-                memberProjects.forEach(p => {
-                  if (!byOwner[p.owner_id]) byOwner[p.owner_id] = { name: p.owner_name, projects: [] };
-                  byOwner[p.owner_id].projects.push(p);
-                });
-
-                return Object.entries(byOwner).map(([ownerId, group]) => (
-                  <div key={ownerId} className="owner-group">
-                    <h3 className="owner-group-title">👥 Проекты — {group.name}</h3>
-                    <div className="projects-grid">
-                      {group.projects.map(project => (
-                        <div key={project.id} className="project-card project-card-member" onClick={() => navigate(`/project/${project.id}`)}>
-                          <div className="project-card-header">
-                            <h3>{project.name}</h3>
-                          </div>
-                          <p>{project.description}</p>
-                          <div className="project-meta">
-                            <span className="role-badge member">{t('roleBadgeMember')}</span>
-                            <span className="project-owner">{project.owner_name}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ));
-              })()}
+                </div>
+              ))}
             </>
           )}
         </div>
       )}
 
       {activeTab === 'mytasks' && (() => {
-        const isDone = (t) => {
-          const s = (t.status_name || '').toLowerCase();
-          return s === 'готово' || s === 'done' || s === 'выполнено';
-        };
-        const activeTasks = myTasks.filter(t => !isDone(t));
-        const doneTasks = myTasks.filter(t => isDone(t));
         const shownTasks = myTasksTab === 'active' ? activeTasks : doneTasks;
-        const overdueCount = activeTasks.filter(t => getTaskDeadlineClass(t) === 'overdue').length;
-
         return (
           <div className="mytasks-section">
             <div className="mytasks-subtabs">
               <button className={`subtab-btn ${myTasksTab === 'active' ? 'active' : ''}`} onClick={() => setMyTasksTab('active')}>
-                Активные {overdueCount > 0 && <span className="badge-count">{overdueCount}</span>}
+                {t('myTasksActive')} {overdueCount > 0 && <span className="badge-count">{overdueCount}</span>}
               </button>
               <button className={`subtab-btn ${myTasksTab === 'done' ? 'active' : ''}`} onClick={() => setMyTasksTab('done')}>
-                Выполненные {doneTasks.length > 0 && <span className="badge-done">{doneTasks.length}</span>}
+                {t('myTasksDone')} {doneTasks.length > 0 && <span className="badge-done">{doneTasks.length}</span>}
               </button>
             </div>
             {shownTasks.length === 0 ? (
               <div className="empty-state">
-                <p>{myTasksTab === 'active' ? '{t('noActiveTasks')}' : '{t('noDoneTasks')}'}</p>
+                <div className="empty-state-icon">{myTasksTab === 'active' ? '🎉' : '📋'}</div>
+                <p className="empty-state-title">{myTasksTab === 'active' ? t('noActiveTasks') : t('noDoneTasks')}</p>
               </div>
             ) : (
               <div className="mytasks-list">
                 {shownTasks.map(task => {
-                  const deadlineClass = myTasksTab === 'active' ? getTaskDeadlineClass(task) : '';
+                  const deadlineClass = deadlineState(task);
                   return (
-                    <div key={task.id} className={`mytask-card ${deadlineClass} ${myTasksTab === 'done' ? 'done' : ''}`} onClick={() => navigate(`/project/${task.project_id}`)}>
+                    <div key={task.id} className={`mytask-card ${deadlineClass} ${task.is_done ? 'done' : ''}`} onClick={() => navigate(`/project/${task.project_id}`)}>
                       <div className="mytask-header">
                         <span className="mytask-project">{task.project_name}</span>
-                        <span className={`mytask-status ${myTasksTab === 'done' ? 'done-status' : ''}`}>{task.status_name}</span>
+                        <span className={`mytask-status ${task.is_done ? 'done-status' : ''}`}>{task.status_name}</span>
                       </div>
                       <h3 className="mytask-title">{task.title}</h3>
                       {task.description && <p className="mytask-desc">{task.description}</p>}
                       <div className="mytask-footer">
                         {task.end_date && (
                           <span className={`mytask-deadline ${deadlineClass}`}>
-                            📅 {t('taskDeadline')} {new Date(task.end_date).toLocaleDateString('ru-RU')}
-                            {deadlineClass === 'overdue' && ' ⚠️ Просрочено'}
-                            {deadlineClass === 'due-soon' && ' ⏰ Скоро'}
+                            📅 {t('taskDeadline')} {formatDate(task.end_date, lang)}
+                            {deadlineClass === 'overdue' && ` ⚠️ ${t('taskOverdue')}`}
+                            {deadlineClass === 'due-soon' && ` ⏰ ${t('taskDueSoon')}`}
                           </span>
                         )}
-                        {task.has_report && <span className="mytask-report-badge">✅ Отчёт сдан</span>}
+                        {task.has_report && <span className="mytask-report-badge">{t('reportSubmittedBadge')}</span>}
                       </div>
                     </div>
                   );
@@ -403,8 +409,6 @@ function Dashboard({ user, onLogout }) {
           </div>
         );
       })()}
-
-      {activeTab === 'mytasks_done' && null}
 
       {activeTab === 'team' && (
         <div className="team-section">
@@ -430,7 +434,10 @@ function Dashboard({ user, onLogout }) {
           </div>
           <div className="team-list">
             {team.length === 0 ? (
-              <div className="empty-state"><p>{t('teamEmpty')}</p></div>
+              <div className="empty-state">
+                <div className="empty-state-icon">👥</div>
+                <p className="empty-state-title">{t('teamEmpty')}</p>
+              </div>
             ) : (
               team.map(member => (
                 <div key={member.id} className={`team-member-card ${member.status === 'pending' ? 'team-member-pending' : ''}`}>
@@ -443,7 +450,7 @@ function Dashboard({ user, onLogout }) {
                     <span className="team-member-email">{member.email}</span>
                   </div>
                   {member.status === 'approved' && (
-                    <button onClick={() => handleRemoveTeamMember(member.id, member.name)} className="btn-icon-sm btn-danger-sm" title="Удалить из команды">🗑️</button>
+                    <button onClick={() => handleRemoveTeamMember(member.id, member.name)} className="btn-icon-sm btn-danger-sm" title={t('removeFromTeamTitle')}>🗑️</button>
                   )}
                 </div>
               ))
@@ -452,6 +459,8 @@ function Dashboard({ user, onLogout }) {
         </div>
       )}
 
+      </main>
+
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -459,15 +468,17 @@ function Dashboard({ user, onLogout }) {
             <form onSubmit={handleCreateProject}>
               <div className="form-group">
                 <label>{t('projectNameLabel')}</label>
-                <input type="text" value={newProject.name} onChange={(e) => setNewProject({ ...newProject, name: e.target.value })} required placeholder={t('projectNamePlaceholder')} />
+                <input type="text" autoFocus value={newProject.name} onChange={(e) => setNewProject({ ...newProject, name: e.target.value })} required placeholder={t('projectNamePlaceholder')} />
               </div>
               <div className="form-group">
                 <label>{t('projectDescLabel')}</label>
                 <textarea value={newProject.description} onChange={(e) => setNewProject({ ...newProject, description: e.target.value })} placeholder={t('projectDescPlaceholder')} rows="3" />
               </div>
               <div className="modal-actions">
-                <button type="button" onClick={() => setShowCreateModal(false)} className="btn-secondary">Отмена</button>
-                <button type="submit" className="btn-primary">Создать</button>
+                <div className="modal-actions-right">
+                  <button type="button" onClick={() => setShowCreateModal(false)} className="btn-secondary">{t('cancel')}</button>
+                  <button type="submit" className="btn-primary">{t('create')}</button>
+                </div>
               </div>
             </form>
           </div>
@@ -481,15 +492,17 @@ function Dashboard({ user, onLogout }) {
             <form onSubmit={handleSaveEdit}>
               <div className="form-group">
                 <label>{t('projectNameLabel')}</label>
-                <input type="text" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
+                <input type="text" autoFocus value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
               </div>
               <div className="form-group">
                 <label>{t('projectDescLabel')}</label>
                 <textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows="3" />
               </div>
               <div className="modal-actions">
-                <button type="button" onClick={() => setEditProject(null)} className="btn-secondary">Отмена</button>
-                <button type="submit" className="btn-primary">Сохранить</button>
+                <div className="modal-actions-right">
+                  <button type="button" onClick={() => setEditProject(null)} className="btn-secondary">{t('cancel')}</button>
+                  <button type="submit" className="btn-primary">{t('save')}</button>
+                </div>
               </div>
             </form>
           </div>

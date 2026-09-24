@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { uploadFile, getTaskAttachments, downloadFile, deleteFile, getTaskReports } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
+import { toInputDate, formatDate } from '../utils/date';
+import useEscape from '../utils/useEscape';
 import './TaskModal.css';
 
 function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttachmentsChange }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  useEscape(onClose);
   const [formData, setFormData] = useState({
     title: '', description: '', startDate: '', endDate: '', assigneeIds: [], dependencies: []
   });
@@ -19,8 +22,8 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttac
       setFormData({
         title: task.title || '',
         description: task.description || '',
-        startDate: (task.start_date || '').split('T')[0],
-        endDate: (task.end_date || '').split('T')[0],
+        startDate: toInputDate(task.start_date),
+        endDate: toInputDate(task.end_date),
         assigneeIds: task.assignees?.map(a => a.id) || [],
         dependencies: task.dependencies?.map(d => ({
           depends_on_task_id: d.depends_on_task_id,
@@ -121,13 +124,13 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttac
       <div className="modal task-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{task ? t('editTaskTitle') : t('createTaskTitle')}</h2>
-          <button onClick={onClose} className="close-btn">×</button>
+          <button type="button" onClick={onClose} className="close-btn" title={t('close')} aria-label={t('close')}>×</button>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>{t('taskTitleLabel')}</label>
-            <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} required placeholder={t('taskTitlePlaceholder')} />
+            <label>{t('taskTitleLabel')} <span className="required-mark">*</span></label>
+            <input type="text" autoFocus={!task} value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} required placeholder={t('taskTitlePlaceholder')} />
           </div>
 
           <div className="form-group">
@@ -210,7 +213,7 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttac
                         <span className="attachment-icon">📄</span>
                         <div className="attachment-details">
                           <div className="attachment-name">{file.original_name}</div>
-                          <div className="attachment-meta">{formatFileSize(file.file_size)} · {new Date(file.uploaded_at).toLocaleDateString()}</div>
+                          <div className="attachment-meta">{formatFileSize(file.file_size)} · {formatDate(file.uploaded_at, lang)}</div>
                         </div>
                       </div>
                       <div className="attachment-actions">
@@ -231,16 +234,16 @@ function TaskModal({ task, members, onSave, onDelete, onClose, allTasks, onAttac
             <div className="form-group reports-section">
               <label>{t('taskReports')}</label>
               {loadingReports ? (
-                <p style={{ color: '#888', fontSize: '13px' }}>{t('taskLoadingReports')}</p>
+                <p className="muted-text">{t('taskLoadingReports')}</p>
               ) : reports.length === 0 ? (
-                <p style={{ color: '#888', fontSize: '13px' }}>{t('taskNoReports')}</p>
+                <p className="muted-text">{t('taskNoReports')}</p>
               ) : (
                 <div className="reports-list">
                   {reports.map(report => (
                     <div key={report.id} className="report-item">
                       <div className="report-header">
                         <span className="report-author">👤 {report.user_name}</span>
-                        <span className="report-date">{new Date(report.submitted_at).toLocaleDateString()}</span>
+                        <span className="report-date">{formatDate(report.submitted_at, lang)}</span>
                       </div>
                       <p className="report-text">{report.report_text}</p>
                     </div>

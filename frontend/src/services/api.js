@@ -7,8 +7,24 @@ const api = axios.create({ baseURL: API_URL });
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  // Язык интерфейса — чтобы сервер отвечал (и писал письма) на нём же
+  config.headers['X-Lang'] = localStorage.getItem('lang') || 'ru';
   return config;
 });
+
+// Токен истёк или недействителен — выходим и отправляем на страницу входа
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const hadToken = !!localStorage.getItem('token');
+    if (error.response?.status === 401 && hadToken) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.assign('/login');
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Auth
 export const register = (data) => api.post('/auth/register', data);
@@ -16,6 +32,7 @@ export const login = (data) => api.post('/auth/login', data);
 export const forgotPassword = (email) => api.post('/auth/forgot-password', { email });
 export const resetPassword = (token, password) => api.post('/auth/reset-password', { token, password });
 export const checkResetToken = (token) => api.get(`/auth/reset-password/${token}`);
+export const saveLanguage = (language) => api.patch('/auth/language', { language });
 
 // Projects
 export const getProjects = () => api.get('/projects');

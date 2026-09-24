@@ -1,47 +1,91 @@
 const express = require('express');
 const pool = require('../config/database');
+const { withTransaction } = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const { sendProjectInvitation } = require('../services/email');
 
 const router = express.Router();
 router.use(authMiddleware);
 
+// Проверка доступа к проекту: владелец или подтверждённый участник
+const PROJECT_ACCESS_SQL = `
+  SELECT p.* FROM projects p
+  WHERE p.id = $1 AND (
+    p.owner_id = $2 OR EXISTS (
+      SELECT 1 FROM project_members pm
+      WHERE pm.project_id = p.id AND pm.user_id = $2 AND pm.status = 'approved'
+    )
+  )
+`;
+
 // Получить все проекты пользователя — сгруппированные по владельцу
 router.get('/', async (req, res) => {
   try {
-    const [rows] = await pool.query(`
-      SELECT DISTINCT p.*, u.name as owner_name, u.id as owner_id,
-      CASE WHEN p.owner_id = ? THEN 'owner' ELSE 'member' END as role
+    const { rows } = await pool.query(`
+      SELECT p.*, u.name AS owner_name,
+        CASE WHEN p.owner_id = $1 THEN 'owner' ELSE 'member' END AS role,
+        COALESCE(st.tasks_total, 0) AS tasks_total,
+        COALESCE(st.tasks_done, 0) AS tasks_done,
+        COALESCE(st.tasks_overdue, 0) AS tasks_overdue
       FROM projects p
       LEFT JOIN users u ON p.owner_id = u.id
-      LEFT JOIN project_members pm ON p.id = pm.project_id
-      WHERE p.owner_id = ? OR (pm.user_id = ? AND pm.status = 'approved')
+      -- Статистика для карточки: всего / выполнено (последняя колонка) / просрочено
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS tasks_total,
+          COUNT(*) FILTER (WHERE s.position = last.position)::int AS tasks_done,
+          COUNT(*) FILTER (WHERE t.end_date < CURRENT_DATE
+                             AND (s.position IS NULL OR s.position <> last.position))::int AS tasks_overdue
+        FROM tasks t
+        LEFT JOIN statuses s ON s.id = t.status_id
+        CROSS JOIN (SELECT MAX(position) AS position FROM statuses WHERE project_id = p.id) last
+        WHERE t.project_id = p.id
+      ) st ON TRUE
+      WHERE p.owner_id = $1 OR EXISTS (
+        SELECT 1 FROM project_members pm
+        WHERE pm.project_id = p.id AND pm.user_id = $1 AND pm.status = 'approved'
+      )
       ORDER BY p.owner_id ASC, p.sort_order ASC, p.created_at DESC
-    `, [req.userId, req.userId, req.userId]);
+    `, [req.userId]);
     res.json(rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка получения проектов' });
+    res.status(500).json({ error: req.t('projectsFetchError') });
   }
 });
 
-// Создать проект
+// Создать проект (вместе с колонками по умолчанию на языке пользователя)
 router.post('/', async (req, res) => {
   try {
     const { name, description } = req.body;
-    // Получаем максимальный sort_order
-    const [[maxRow]] = await pool.query('SELECT MAX(sort_order) as maxOrder FROM projects');
-    const sortOrder = (maxRow.maxOrder || 0) + 1;
+    const statusNames = req.t('defaultStatuses');
 
-    const [result] = await pool.query(
-      'INSERT INTO projects (name, description, owner_id, sort_order) VALUES (?, ?, ?, ?)',
-      [name, description, req.userId, sortOrder]
-    );
-    const [projects] = await pool.query('SELECT * FROM projects WHERE id = ?', [result.insertId]);
-    res.status(201).json(projects[0]);
+    const project = await withTransaction(async (client) => {
+      const { rows: [created] } = await client.query(`
+        INSERT INTO projects (name, description, owner_id, sort_order)
+        VALUES ($1, $2, $3, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM projects WHERE owner_id = $3))
+        RETURNING *
+      `, [name, description, req.userId]);
+
+      await client.query(`
+        INSERT INTO statuses (project_id, name, position)
+        SELECT $1, s.name, s.position FROM unnest($2::text[]) WITH ORDINALITY AS s(name, position)
+      `, [created.id, statusNames]);
+
+      // Участники команды получают доступ ко всем проектам владельца, включая новые
+      await client.query(`
+        INSERT INTO project_members (project_id, user_id, status)
+        SELECT $1, member_id, 'approved' FROM team_members
+        WHERE owner_id = $2 AND status = 'approved'
+        ON CONFLICT (project_id, user_id) DO NOTHING
+      `, [created.id, req.userId]);
+
+      return created;
+    });
+
+    res.status(201).json(project);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка создания проекта' });
+    res.status(500).json({ error: req.t('projectCreateError') });
   }
 });
 
@@ -51,23 +95,17 @@ router.patch('/:id', async (req, res) => {
     const { id } = req.params;
     const { name, description } = req.body;
 
-    const [projects] = await pool.query(
-      'SELECT * FROM projects WHERE id = ? AND owner_id = ?',
-      [id, req.userId]
+    const { rows: updated } = await pool.query(
+      'UPDATE projects SET name = $1, description = $2 WHERE id = $3 AND owner_id = $4 RETURNING *',
+      [name, description, id, req.userId]
     );
-    if (projects.length === 0) {
-      return res.status(403).json({ error: 'Только владелец может редактировать проект' });
+    if (updated.length === 0) {
+      return res.status(403).json({ error: req.t('onlyOwnerEdit') });
     }
-
-    await pool.query(
-      'UPDATE projects SET name = ?, description = ? WHERE id = ?',
-      [name, description, id]
-    );
-    const [updated] = await pool.query('SELECT * FROM projects WHERE id = ?', [id]);
     res.json(updated[0]);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка обновления проекта' });
+    res.status(500).json({ error: req.t('projectUpdateError') });
   }
 });
 
@@ -76,16 +114,17 @@ router.post('/reorder', async (req, res) => {
   try {
     const { projectIds } = req.body; // массив id в новом порядке
     if (!Array.isArray(projectIds)) {
-      return res.status(400).json({ error: 'projectIds должен быть массивом' });
+      return res.status(400).json({ error: req.t('projectIdsArray') });
     }
-    const updates = projectIds.map((id, index) =>
-      pool.query('UPDATE projects SET sort_order = ? WHERE id = ? AND owner_id = ?', [index, id, req.userId])
-    );
-    await Promise.all(updates);
-    res.json({ message: 'Порядок обновлён' });
+    await pool.query(`
+      UPDATE projects p SET sort_order = o.position
+      FROM unnest($1::int[]) WITH ORDINALITY AS o(id, position)
+      WHERE p.id = o.id AND p.owner_id = $2
+    `, [projectIds, req.userId]);
+    res.json({ message: req.t('orderSaved') });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка изменения порядка' });
+    res.status(500).json({ error: req.t('orderError') });
   }
 });
 
@@ -93,18 +132,34 @@ router.post('/reorder', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const [projects] = await pool.query(
-      'SELECT * FROM projects WHERE id = ? AND owner_id = ?',
-      [id, req.userId]
+    const { rowCount } = await pool.query(
+      'DELETE FROM projects WHERE id = $1 AND owner_id = $2', [id, req.userId]
     );
-    if (projects.length === 0) {
-      return res.status(403).json({ error: 'Только владелец может удалить проект' });
+    if (rowCount === 0) {
+      return res.status(403).json({ error: req.t('onlyOwnerDelete') });
     }
-    await pool.query('DELETE FROM projects WHERE id = ?', [id]);
-    res.json({ message: 'Проект удалён' });
+    res.json({ message: req.t('projectDeleted') });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка удаления проекта' });
+    res.status(500).json({ error: req.t('projectDeleteError') });
+  }
+});
+
+// Получить приглашения (до /:id, чтобы не перехватывалось)
+router.get('/invitations/pending', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT p.*, u.name AS owner_name, pm.invited_at
+      FROM project_members pm
+      JOIN projects p ON pm.project_id = p.id
+      JOIN users u ON p.owner_id = u.id
+      WHERE pm.user_id = $1 AND pm.status = 'pending'
+      ORDER BY pm.invited_at DESC
+    `, [req.userId]);
+    res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: req.t('invitationsFetchError') });
   }
 });
 
@@ -112,91 +167,58 @@ router.delete('/:id', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const [access] = await pool.query(`
-      SELECT p.* FROM projects p
-      LEFT JOIN project_members pm ON p.id = pm.project_id
-      WHERE p.id = ? AND (p.owner_id = ? OR (pm.user_id = ? AND pm.status = 'approved'))
-    `, [id, req.userId, req.userId]);
-
+    const { rows: access } = await pool.query(PROJECT_ACCESS_SQL, [id, req.userId]);
     if (access.length === 0) {
-      return res.status(403).json({ error: 'Доступ запрещён' });
+      return res.status(403).json({ error: req.t('accessDenied') });
     }
 
-    const [statuses] = await pool.query(
-      'SELECT * FROM statuses WHERE project_id = ? ORDER BY position',
-      [id]
+    const { rows: statuses } = await pool.query(
+      'SELECT * FROM statuses WHERE project_id = $1 ORDER BY position', [id]
     );
-    
-    const [tasksRaw] = await pool.query(`
-      SELECT 
-        t.*,
-        GROUP_CONCAT(DISTINCT CONCAT(u.id, ':', u.name, ':', u.email) SEPARATOR '||') as assignees_raw,
-        COUNT(DISTINCT ta_files.id) as attachments_count,
-        (SELECT COUNT(*) FROM task_reports tr WHERE tr.task_id = t.id) as has_report
+
+    const { rows: tasks } = await pool.query(`
+      SELECT t.id, t.project_id, t.status_id, t.title, t.description,
+        t.start_date, t.end_date, t.created_at, t.updated_at,
+        COALESCE((
+          SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email) ORDER BY u.name)
+          FROM task_assignees ta JOIN users u ON ta.user_id = u.id
+          WHERE ta.task_id = t.id
+        ), '[]') AS assignees,
+        (SELECT COUNT(*)::int FROM task_attachments f WHERE f.task_id = t.id) AS attachments_count,
+        EXISTS (SELECT 1 FROM task_reports tr WHERE tr.task_id = t.id) AS has_report,
+        COALESCE((
+          SELECT json_agg(json_build_object(
+            'task_id', d.task_id,
+            'depends_on_task_id', d.depends_on_task_id,
+            'dependency_type', d.dependency_type
+          ))
+          FROM task_dependencies d WHERE d.task_id = t.id
+        ), '[]') AS dependencies
       FROM tasks t
-      LEFT JOIN task_assignees ta ON t.id = ta.task_id
-      LEFT JOIN users u ON ta.user_id = u.id
-      LEFT JOIN task_attachments ta_files ON t.id = ta_files.task_id
-      WHERE t.project_id = ?
-      GROUP BY t.id
+      WHERE t.project_id = $1
       ORDER BY t.created_at DESC
     `, [id]);
 
-    const tasks = tasksRaw.map(task => {
-      const assignees = [];
-      if (task.assignees_raw) {
-        task.assignees_raw.split('||').forEach(str => {
-          const [uid, name, email] = str.split(':');
-          assignees.push({ id: parseInt(uid), name, email });
-        });
-      }
-      return {
-        id: task.id,
-        project_id: task.project_id,
-        status_id: task.status_id,
-        title: task.title,
-        description: task.description,
-        start_date: task.start_date,
-        end_date: task.end_date,
-        created_at: task.created_at,
-        updated_at: task.updated_at,
-        assignees,
-        attachments_count: parseInt(task.attachments_count) || 0,
-        has_report: task.has_report > 0,
-        dependencies: []
-      };
-    });
-
-    const [dependencies] = await pool.query(`
-      SELECT task_id, depends_on_task_id, dependency_type
-      FROM task_dependencies
-      WHERE task_id IN (SELECT id FROM tasks WHERE project_id = ?)
-    `, [id]);
-
-    tasks.forEach(task => {
-      task.dependencies = dependencies.filter(d => d.task_id === task.id);
-    });
-    
-    const [members] = await pool.query(`
+    const { rows: members } = await pool.query(`
       SELECT u.id, u.name, u.email, pm.status, pm.invited_at,
-        CASE WHEN p.owner_id = u.id THEN 1 ELSE 0 END as is_owner,
-        CASE WHEN tm.id IS NOT NULL THEN 'team' ELSE 'project' END as source
+        CASE WHEN p.owner_id = u.id THEN 1 ELSE 0 END AS is_owner,
+        CASE WHEN tm.id IS NOT NULL THEN 'team' ELSE 'project' END AS source
       FROM project_members pm
       JOIN users u ON pm.user_id = u.id
       JOIN projects p ON pm.project_id = p.id
       LEFT JOIN team_members tm ON tm.owner_id = p.owner_id AND tm.member_id = u.id AND tm.status = 'approved'
-      WHERE pm.project_id = ?
-      UNION
-      SELECT u.id, u.name, u.email, 'approved' as status, p.created_at as invited_at, 1 as is_owner, 'owner' as source
+      WHERE pm.project_id = $1 AND pm.user_id <> p.owner_id
+      UNION ALL
+      SELECT u.id, u.name, u.email, 'approved' AS status, p.created_at AS invited_at, 1 AS is_owner, 'owner' AS source
       FROM projects p
       JOIN users u ON p.owner_id = u.id
-      WHERE p.id = ?
-    `, [id, id]);
+      WHERE p.id = $1
+    `, [id]);
 
     res.json({ ...access[0], statuses, tasks, members });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка получения проекта' });
+    res.status(500).json({ error: req.t('projectFetchError') });
   }
 });
 
@@ -204,21 +226,19 @@ router.get('/:id', async (req, res) => {
 router.delete('/:id/members/:userId', async (req, res) => {
   try {
     const { id, userId } = req.params;
-    const [projects] = await pool.query(
-      'SELECT * FROM projects WHERE id = ? AND owner_id = ?',
-      [id, req.userId]
+    const { rows: projects } = await pool.query(
+      'SELECT id FROM projects WHERE id = $1 AND owner_id = $2', [id, req.userId]
     );
     if (projects.length === 0) {
-      return res.status(403).json({ error: 'Только владелец может удалять участников' });
+      return res.status(403).json({ error: req.t('onlyOwnerRemoveMembers') });
     }
     await pool.query(
-      'DELETE FROM project_members WHERE project_id = ? AND user_id = ?',
-      [id, userId]
+      'DELETE FROM project_members WHERE project_id = $1 AND user_id = $2', [id, userId]
     );
-    res.json({ message: 'Участник удалён из проекта' });
+    res.json({ message: req.t('memberRemovedFromProject') });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка удаления участника' });
+    res.status(500).json({ error: req.t('memberRemoveError') });
   }
 });
 
@@ -227,58 +247,43 @@ router.post('/:id/invite', async (req, res) => {
   try {
     const { id } = req.params;
     const { email } = req.body;
-    const [projects] = await pool.query(
-      'SELECT * FROM projects WHERE id = ? AND owner_id = ?',
-      [id, req.userId]
+    const { rows: projects } = await pool.query(
+      'SELECT * FROM projects WHERE id = $1 AND owner_id = $2', [id, req.userId]
     );
     if (projects.length === 0) {
-      return res.status(403).json({ error: 'Только владелец может приглашать' });
+      return res.status(403).json({ error: req.t('onlyOwnerInvite') });
     }
-    const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+    const { rows: users } = await pool.query(
+      'SELECT id, name, email, language FROM users WHERE email = $1', [email]
+    );
     if (users.length === 0) {
-      return res.status(404).json({ error: 'Пользователь не найден' });
+      return res.status(404).json({ error: req.t('userNotFound') });
     }
     const invitedUser = users[0];
-    const [existing] = await pool.query(
-      'SELECT * FROM project_members WHERE project_id = ? AND user_id = ?',
-      [id, invitedUser.id]
+    if (invitedUser.id === req.userId) {
+      return res.status(400).json({ error: req.t('cannotInviteSelf') });
+    }
+    const { rows: existing } = await pool.query(
+      'SELECT id FROM project_members WHERE project_id = $1 AND user_id = $2', [id, invitedUser.id]
     );
     if (existing.length > 0) {
-      return res.status(400).json({ error: 'Пользователь уже приглашён' });
+      return res.status(400).json({ error: req.t('userAlreadyInvited') });
     }
     await pool.query(
-      'INSERT INTO project_members (project_id, user_id, status) VALUES (?, ?, ?)',
+      'INSERT INTO project_members (project_id, user_id, status) VALUES ($1, $2, $3)',
       [id, invitedUser.id, 'pending']
     );
 
     // Получаем имя владельца и отправляем письмо
-    const [ownerRows] = await pool.query('SELECT name FROM users WHERE id = ?', [req.userId]);
-    const inviterName = ownerRows[0]?.name || 'Пользователь';
-    sendProjectInvitation(invitedUser.email, invitedUser.name, inviterName, projects[0].name)
+    const { rows: ownerRows } = await pool.query('SELECT name FROM users WHERE id = $1', [req.userId]);
+    const inviterName = ownerRows[0]?.name || 'Task Manager';
+    sendProjectInvitation(invitedUser, inviterName, projects[0].name)
       .catch(err => console.error('Ошибка отправки письма приглашения:', err));
 
-    res.json({ message: 'Приглашение отправлено' });
+    res.json({ message: req.t('invitationSent') });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка отправки приглашения' });
-  }
-});
-
-// Получить приглашения
-router.get('/invitations/pending', async (req, res) => {
-  try {
-    const [invitations] = await pool.query(`
-      SELECT p.*, u.name as owner_name, pm.invited_at
-      FROM project_members pm
-      JOIN projects p ON pm.project_id = p.id
-      JOIN users u ON p.owner_id = u.id
-      WHERE pm.user_id = ? AND pm.status = 'pending'
-      ORDER BY pm.invited_at DESC
-    `, [req.userId]);
-    res.json(invitations);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Ошибка получения приглашений' });
+    res.status(500).json({ error: req.t('invitationSendError') });
   }
 });
 
@@ -287,24 +292,23 @@ router.patch('/:id/invitation/:action', async (req, res) => {
   try {
     const { id, action } = req.params;
     if (!['approve', 'reject'].includes(action)) {
-      return res.status(400).json({ error: 'Неверное действие' });
+      return res.status(400).json({ error: req.t('invalidAction') });
     }
     if (action === 'approve') {
       await pool.query(
-        'UPDATE project_members SET status = ? WHERE project_id = ? AND user_id = ?',
+        'UPDATE project_members SET status = $1 WHERE project_id = $2 AND user_id = $3',
         ['approved', id, req.userId]
       );
-      res.json({ message: 'Приглашение принято' });
+      res.json({ message: req.t('invitationAccepted') });
     } else {
       await pool.query(
-        'DELETE FROM project_members WHERE project_id = ? AND user_id = ?',
-        [id, req.userId]
+        'DELETE FROM project_members WHERE project_id = $1 AND user_id = $2', [id, req.userId]
       );
-      res.json({ message: 'Приглашение отклонено' });
+      res.json({ message: req.t('invitationRejected') });
     }
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Ошибка обработки приглашения' });
+    res.status(500).json({ error: req.t('invitationProcessError') });
   }
 });
 

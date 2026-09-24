@@ -7,38 +7,41 @@ const {
   sendOverdueNotification
 } = require('./email');
 
-// Запускается каждый день в 09:00
+// Задача не в последней колонке проекта (т.е. ещё не выполнена)
+const TASK_NOT_DONE_SQL = `
+  NOT EXISTS (
+    SELECT 1 FROM statuses s
+    WHERE s.id = t.status_id
+      AND s.position = (SELECT MAX(s2.position) FROM statuses s2 WHERE s2.project_id = t.project_id)
+  )
+`;
+
 function startScheduler() {
   // ─── Уведомление о приближающихся дедлайнах (за 1 и 3 дня) ───────────────
   cron.schedule('0 9 * * *', async () => {
     console.log('[Scheduler] Проверка приближающихся дедлайнов...');
     try {
-      const [tasks] = await pool.query(`
+      const { rows: tasks } = await pool.query(`
         SELECT t.id, t.title, t.end_date, t.project_id,
-               p.name as project_name,
-               u.id as user_id, u.name as user_name, u.email as user_email
+               (t.end_date - CURRENT_DATE) AS days_left,
+               p.name AS project_name,
+               u.id AS user_id, u.name AS user_name, u.email AS user_email, u.language AS user_language
         FROM tasks t
         JOIN projects p ON t.project_id = p.id
         JOIN task_assignees ta ON t.id = ta.task_id
         JOIN users u ON ta.user_id = u.id
-        WHERE t.end_date IN (
-          DATE_ADD(CURDATE(), INTERVAL 1 DAY),
-          DATE_ADD(CURDATE(), INTERVAL 3 DAY)
-        )
+        WHERE t.end_date IN (CURRENT_DATE + 1, CURRENT_DATE + 3)
+          AND ${TASK_NOT_DONE_SQL}
       `);
 
       for (const task of tasks) {
-        const daysLeft = Math.round(
-          (new Date(task.end_date) - new Date()) / (1000 * 60 * 60 * 24)
-        );
         try {
           await sendDeadlineWarning(
-            task.user_email,
-            task.user_name,
+            { email: task.user_email, name: task.user_name, language: task.user_language },
             task.title,
             task.project_name,
             task.end_date,
-            daysLeft < 1 ? 1 : daysLeft
+            task.days_left
           );
           console.log(`[Scheduler] Напоминание отправлено: ${task.user_email} / ${task.title}`);
         } catch (e) {
@@ -55,18 +58,18 @@ function startScheduler() {
     console.log('[Scheduler] Запрос отчётов по просроченным задачам...');
     try {
       // Задачи, дедлайн которых сегодня или вчера, у которых ещё нет токена
-      const [tasks] = await pool.query(`
+      const { rows: tasks } = await pool.query(`
         SELECT t.id, t.title, t.end_date, t.project_id,
-               p.name as project_name,
-               u.id as user_id, u.name as user_name, u.email as user_email
+               p.name AS project_name,
+               u.id AS user_id, u.name AS user_name, u.email AS user_email, u.language AS user_language
         FROM tasks t
         JOIN projects p ON t.project_id = p.id
         JOIN task_assignees ta ON t.id = ta.task_id
         JOIN users u ON ta.user_id = u.id
         LEFT JOIN task_reports tr ON (tr.task_id = t.id AND tr.user_id = u.id)
         LEFT JOIN report_tokens rt ON (rt.task_id = t.id AND rt.user_id = u.id)
-        WHERE t.end_date <= CURDATE()
-          AND t.end_date >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+        WHERE t.end_date <= CURRENT_DATE
+          AND t.end_date >= CURRENT_DATE - 1
           AND tr.id IS NULL
           AND rt.id IS NULL
       `);
@@ -77,14 +80,13 @@ function startScheduler() {
           const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48h
 
           await pool.query(
-            `INSERT INTO report_tokens (task_id, user_id, token, expires_at)
-             VALUES (?, ?, ?, ?)`,
+            `INSERT INTO report_tokens (task_id, user_id, token, expires_at, deadline_notified_at)
+             VALUES ($1, $2, $3, $4, NOW())`,
             [task.id, task.user_id, token, expiresAt]
           );
 
           await sendReportRequest(
-            task.user_email,
-            task.user_name,
+            { email: task.user_email, name: task.user_name, language: task.user_language },
             task.title,
             task.project_name,
             token
@@ -103,37 +105,33 @@ function startScheduler() {
   cron.schedule('0 11 * * *', async () => {
     console.log('[Scheduler] Проверка отсутствующих отчётов (24ч)...');
     try {
-      const [tokens] = await pool.query(`
+      const { rows: tokens } = await pool.query(`
         SELECT rt.id, rt.task_id, rt.user_id,
-               t.title as task_title, t.project_id,
-               p.name as project_name,
+               t.title AS task_title, t.project_id,
+               p.name AS project_name,
                p.owner_id,
-               assignee.name as assignee_name,
-               owner.name as owner_name, owner.email as owner_email
+               assignee.name AS assignee_name,
+               owner.name AS owner_name, owner.email AS owner_email, owner.language AS owner_language
         FROM report_tokens rt
         JOIN tasks t ON rt.task_id = t.id
         JOIN projects p ON t.project_id = p.id
         JOIN users assignee ON rt.user_id = assignee.id
         JOIN users owner ON p.owner_id = owner.id
         LEFT JOIN task_reports tr ON (tr.task_id = rt.task_id AND tr.user_id = rt.user_id)
-        WHERE rt.deadline_notified_at <= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-          AND rt.overdue_notified = 0
+        WHERE rt.deadline_notified_at <= NOW() - INTERVAL '24 hours'
+          AND rt.overdue_notified = FALSE
           AND tr.id IS NULL
       `);
 
       for (const row of tokens) {
         try {
           await sendOverdueNotification(
-            row.owner_email,
-            row.owner_name,
+            { email: row.owner_email, name: row.owner_name, language: row.owner_language },
             row.task_title,
             row.project_name,
             row.assignee_name
           );
-          await pool.query(
-            'UPDATE report_tokens SET overdue_notified = 1 WHERE id = ?',
-            [row.id]
-          );
+          await pool.query('UPDATE report_tokens SET overdue_notified = TRUE WHERE id = $1', [row.id]);
           console.log(`[Scheduler] Уведомление создателю: ${row.owner_email} / ${row.task_title}`);
         } catch (e) {
           console.error('[Scheduler] Ошибка уведомления создателя:', e.message);

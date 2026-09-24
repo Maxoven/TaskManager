@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { verifyEmail } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
+import { Logo } from './AppHeader';
 import './Auth.css';
 
 function VerifyEmail({ onLogin }) {
@@ -30,7 +31,7 @@ function VerifyEmail({ onLogin }) {
   return (
     <div className="auth-container">
       <div className="auth-box" style={{ textAlign: 'center' }}>
-        <div className="auth-lang-toggle"><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>
+        <div className="auth-lang-toggle"><Logo size={28} /><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>
         {status === 'loading' && (<><div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div><h2>{t('verifyLoading')}</h2></>)}
         {status === 'success' && (<><div style={{ fontSize: 48, marginBottom: 16 }}>✅</div><h2>{t('verifySuccess')}</h2><p style={{ color: '#555' }}>{t('verifySuccessText')}</p></>)}
         {status === 'error' && (<><div style={{ fontSize: 48, marginBottom: 16 }}>❌</div><h2>{t('verifyErrorTitle')}</h2><p style={{ color: '#888' }}>{message}</p><p style={{ marginTop: 16, fontSize: 13 }}><Link to="/login">{t('verifyBackToLogin')}</Link></p></>)}

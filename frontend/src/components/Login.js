@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { login, resendVerification } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
+import { Logo } from './AppHeader';
 import './Auth.css';
 
 function Login({ onLogin }) {
@@ -33,7 +34,7 @@ function Login({ onLogin }) {
   return (
     <div className="auth-container">
       <div className="auth-box">
-        <div className="auth-lang-toggle">
+        <div className="auth-lang-toggle"><Logo size={28} />
           <button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button>
         </div>
         <h1>{t('loginTitle')}</h1>

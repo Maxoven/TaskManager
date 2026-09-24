@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { checkResetToken, resetPassword } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
+import { Logo } from './AppHeader';
 import './Auth.css';
 
 function ResetPassword() {
@@ -22,14 +23,14 @@ function ResetPassword() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (password !== confirm) { setError(t('resetMismatch')); return; }
-    if (password.length < 6) { setError(t('resetShort')); return; }
+    if (password.length < 8) { setError(t('resetShort')); return; }
     setError(''); setLoading(true);
     try { await resetPassword(token, password); setDone(true); setTimeout(() => navigate('/login'), 3000); }
     catch (err) { setError(err.response?.data?.error || t('resetError')); }
     finally { setLoading(false); }
   };
 
-  const LangBtn = () => <div className="auth-lang-toggle"><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>;
+  const LangBtn = () => <div className="auth-lang-toggle"><Logo size={28} /><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>;
 
   if (valid === null) return <div className="auth-container"><div className="auth-box"><LangBtn /><p>{t('resetChecking')}</p></div></div>;
   if (!valid) return (
@@ -58,7 +59,7 @@ function ResetPassword() {
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>{t('resetNewPassword')}</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder={t('resetNewPasswordPlaceholder')} />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder={t('resetNewPasswordPlaceholder')} minLength={8} />
           </div>
           <div className="form-group">
             <label>{t('resetConfirm')}</label>

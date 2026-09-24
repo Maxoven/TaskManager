@@ -1,258 +1,244 @@
-.dashboard { min-height: 100vh; background: #f5f5f5; }
+.dashboard { min-height: 100vh; background: var(--bg); }
 
-.dashboard-header {
-  background: white;
-  padding: 20px 40px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.dashboard-main {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 28px 24px 56px;
 }
-.dashboard-header h1 { font-size: 28px; color: #333; }
-.user-info { display: flex; align-items: center; gap: 15px; }
-.user-info span { color: #666; font-weight: 500; }
 
-/* Приглашения */
-.invitations-section { max-width: 1200px; margin: 30px auto; padding: 0 20px; }
-.invitations-section h2 { margin-bottom: 15px; color: #333; }
-.invitations-list { display: flex; flex-direction: column; gap: 15px; }
+.dashboard-greeting { margin-bottom: 20px; }
+.dashboard-greeting h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+.dashboard-greeting p { color: var(--text-muted); margin-top: 4px; font-size: 14px; }
+
+/* ─── Приглашения ─── */
+.invitations-section { margin-bottom: 20px; }
+.invitations-section h2 {
+  font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-muted); margin-bottom: 10px;
+}
+.invitations-list { display: flex; flex-direction: column; gap: 10px; }
 .invitation-card {
-  background: #fff3cd; border: 1px solid #ffc107;
-  padding: 20px; border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--warning);
+  padding: 14px 18px; border-radius: var(--radius);
   display: flex; justify-content: space-between; align-items: center;
+  gap: 16px; flex-wrap: wrap;
 }
-.invitation-card h3 { margin-bottom: 5px; color: #333; }
-.invitation-card p { color: #666; font-size: 14px; margin: 3px 0; }
+.team-invitation-card { border-left-color: #8e24aa; }
+.invitation-body { flex: 1; min-width: 200px; }
+.invitation-card h3 { font-size: 15px; margin-bottom: 2px; word-break: break-word; }
+.invitation-card p { color: var(--text-muted); font-size: 13px; margin: 2px 0; }
 .invitation-desc { font-style: italic; }
-.invitation-actions { display: flex; gap: 10px; }
+.invitation-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
-/* Вкладки */
+/* ─── Вкладки (сегменты) ─── */
 .dashboard-tabs {
-  display: flex;
-  gap: 4px;
-  max-width: 1200px;
-  margin: 24px auto 0;
-  padding: 0 20px;
-  border-bottom: 2px solid #f0f0f0;
+  display: inline-flex;
+  gap: 2px;
+  padding: 4px;
+  background: #e9ebee;
+  border-radius: 10px;
+  margin-bottom: 24px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.dashboard-tabs::-webkit-scrollbar { display: none; }
 .tab-btn {
-  padding: 10px 20px; border: none; background: none;
-  cursor: pointer; font-size: 15px; color: #666;
-  border-bottom: 2px solid transparent; margin-bottom: -2px;
-  display: flex; align-items: center; gap: 6px; transition: all 0.2s;
+  padding: 8px 16px; background: none; color: var(--text-muted);
+  border-radius: 7px; font-size: 14px;
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
 }
-.tab-btn:hover { color: #25b84c; }
-.tab-btn.active { color: #25b84c; border-bottom-color: #25b84c; font-weight: 600; }
-.badge-count {
-  background: #ef5350; color: white;
-  border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: bold;
-}
-.badge-team {
-  background: #25b84c; color: white;
-  border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: bold;
-}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: var(--shadow-sm); }
 
-/* Проекты */
-.projects-section { max-width: 1200px; margin: 24px auto; padding: 0 20px; }
-.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.section-header h2 { color: #333; }
-.hint-text { color: #aaa; font-size: 13px; margin: 0 0 16px; }
+.badge-count, .badge-team, .badge-done {
+  border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 700; color: white;
+}
+.badge-count { background: var(--danger); }
+.badge-team, .badge-done { background: var(--accent); }
 
+/* ─── Секции ─── */
+.section-header {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.section-header h2 { font-size: 18px; font-weight: 600; }
+.section-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.hint-text { color: var(--text-faint); font-size: 13px; margin: 0 0 16px; }
+
+/* ─── Карточки проектов ─── */
 .projects-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 14px;
 }
 
-/* Карточка проекта — фикс переполнения названия */
 .project-card {
-  background: white;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  background: var(--surface);
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
   cursor: pointer;
-  transition: all 0.2s;
-}
-.project-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.15); transform: translateY(-2px); }
-
-.project-card-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 10px;
-  min-width: 0;
-}
-.project-card-header h3 {
-  flex: 1;
-  min-width: 0;          /* ← ключевой фикс переполнения */
-  margin: 0;
-  font-size: 16px;
-  color: #333;
-  word-break: break-word;
-  line-height: 1.4;
-}
-.project-card-actions {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;        /* ← кнопки не сжимаются */
-  margin-top: 1px;
-}
-
-.project-card p { color: #666; margin-bottom: 15px; min-height: 20px; font-size: 14px; }
-.project-meta { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
-.role-badge { padding: 4px 12px; border-radius: 20px; font-weight: 500; font-size: 12px; }
-.role-badge.owner { background: #e3f2fd; color: #1976d2; }
-.role-badge.member { background: #f3e5f5; color: #7b1fa2; }
-.project-owner { color: #999; }
-
-/* Кнопки иконки */
-.btn-icon-sm {
-  width: 28px; height: 28px;
-  border: none; background: #f5f5f5;
-  border-radius: 4px; cursor: pointer;
-  font-size: 14px;
-  display: flex; align-items: center; justify-content: center;
-  transition: background 0.2s; flex-shrink: 0;
-}
-.btn-icon-sm:hover { background: #e8e8e8; }
-.btn-danger-sm:hover { background: #ffe8e8; }
-
-/* Режим сортировки */
-.sort-list {
+  transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-width: 600px;
+  min-width: 0;
+  min-height: 140px;
 }
-.sort-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: white;
-  border: 1px solid #e8e8e8;
-  border-radius: 8px;
-  padding: 14px 16px;
-  cursor: grab;
-  user-select: none;
-  transition: box-shadow 0.2s;
-}
-.sort-item:active { cursor: grabbing; }
-.sort-item.dragging { box-shadow: 0 4px 16px rgba(0,0,0,0.15); border-color: #25b84c; }
-.sort-item-handle { color: #ccc; font-size: 18px; flex-shrink: 0; }
-.sort-item-num { color: #aaa; font-size: 14px; min-width: 24px; flex-shrink: 0; }
-.sort-item-name { font-size: 15px; font-weight: 500; color: #333; }
+.project-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); border-color: #d5d9de; }
 
-/* Пустое состояние */
-.empty-state { text-align: center; padding: 60px 20px; color: #999; }
-.empty-state p { margin: 10px 0; font-size: 16px; }
+.project-card-header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; min-width: 0; }
+.project-card-header h3 {
+  flex: 1; min-width: 0; margin: 0;
+  font-size: 16px; font-weight: 600; line-height: 1.35; word-break: break-word;
+}
+.project-card-actions {
+  display: flex; gap: 2px; flex-shrink: 0;
+  opacity: 0; transition: opacity 0.15s;
+}
+.project-card:hover .project-card-actions,
+.project-card:focus-within .project-card-actions { opacity: 1; }
+@media (hover: none) { .project-card-actions { opacity: 1; } }
 
-/* Мои задачи */
-.mytasks-section { max-width: 1200px; margin: 24px auto; padding: 0 20px; }
-.mytasks-section h2 { margin: 0 0 16px; color: #333; }
-.mytasks-list { display: flex; flex-direction: column; gap: 10px; }
-.mytask-card {
-  background: white; border: 1px solid #e8e8e8;
-  border-left: 4px solid #25b84c;
-  border-radius: 8px; padding: 14px 16px;
-  cursor: pointer; transition: box-shadow 0.2s;
-}
-.mytask-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-.mytask-card.overdue { border-left-color: #ef5350; }
-.mytask-card.due-soon { border-left-color: #ff9800; }
-.mytask-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
-.mytask-project { font-size: 12px; color: #25b84c; font-weight: 600; }
-.mytask-status { font-size: 12px; color: #888; background: #f5f5f5; padding: 2px 8px; border-radius: 10px; }
-.mytask-title { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
-.mytask-desc { margin: 0 0 8px; font-size: 13px; color: #666; }
-.mytask-footer { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.mytask-deadline { font-size: 13px; color: #666; }
-.mytask-deadline.overdue { color: #ef5350; font-weight: 600; }
-.mytask-deadline.due-soon { color: #ff9800; font-weight: 600; }
-.mytask-report-badge { font-size: 12px; color: #25b84c; font-weight: 600; }
-
-/* Команда */
-.team-section { max-width: 1200px; margin: 24px auto; padding: 0 20px; }
-.team-section h2 { color: #333; margin-bottom: 6px; }
-.team-hint { color: #888; font-size: 14px; margin-bottom: 24px; }
-.team-add-form {
-  background: white; border-radius: 8px;
-  padding: 20px; margin-bottom: 24px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-}
-.team-add-form h3 { margin: 0 0 12px; font-size: 15px; color: #333; }
-.team-invite-row { display: flex; gap: 8px; }
-.team-email-input {
-  flex: 1; padding: 10px 14px;
-  border: 1px solid #ddd; border-radius: 6px;
-  font-size: 14px; outline: none; transition: border-color 0.2s;
-}
-.team-email-input:focus { border-color: #25b84c; }
-.team-error { color: #ef5350; font-size: 13px; margin: 8px 0 0; }
-.team-success { color: #25b84c; font-size: 13px; margin: 8px 0 0; }
-
-.team-list { display: flex; flex-direction: column; gap: 8px; }
-.team-member-card {
-  background: white; border-radius: 8px;
-  padding: 14px 16px;
-  display: flex; align-items: center; gap: 14px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-}
-.team-member-avatar {
-  width: 40px; height: 40px; border-radius: 50%;
-  background: #25b84c; color: white;
-  font-size: 18px; font-weight: bold;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-}
-.team-member-info { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.team-member-name { font-size: 15px; font-weight: 500; color: #333; }
-.team-member-email { font-size: 13px; color: #888; }
-
-/* Подвкладки Мои задачи */
-.mytasks-subtabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 16px;
-  border-bottom: 2px solid #f0f0f0;
-}
-.subtab-btn {
-  padding: 8px 16px; border: none; background: none;
-  cursor: pointer; font-size: 14px; color: #666;
-  border-bottom: 2px solid transparent; margin-bottom: -2px;
-  display: flex; align-items: center; gap: 6px; transition: all 0.2s;
-}
-.subtab-btn:hover { color: #25b84c; }
-.subtab-btn.active { color: #25b84c; border-bottom-color: #25b84c; font-weight: 600; }
-.badge-done {
-  background: #25b84c; color: white;
-  border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: bold;
+.project-card-desc {
+  color: var(--text-muted); font-size: 13px; line-height: 1.45;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  word-break: break-word;
 }
 
-/* Выполненные задачи */
-.mytask-card.done { border-left-color: #bdbdbd; opacity: 0.8; }
-.mytask-status.done-status { background: #e8f5e9; color: #25b84c; }
+.project-stats { margin-top: auto; padding-top: 14px; }
+.project-progress { height: 6px; background: #eef0f2; border-radius: 3px; overflow: hidden; }
+.project-progress-bar { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; }
+.project-stats-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  margin-top: 8px; font-size: 12px; color: var(--text-muted);
+}
+.project-overdue { color: var(--danger); font-weight: 600; white-space: nowrap; }
+
+.project-card-member { border-top: 3px solid #8e24aa; }
+
+.btn-icon-sm {
+  width: 28px; height: 28px; padding: 0;
+  background: transparent; border-radius: 6px;
+  font-size: 13px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.btn-icon-sm:hover { background: #f0f1f3; }
+.btn-danger-sm:hover { background: #fdecea; }
 
 /* Группа проектов по владельцу */
 .owner-group { margin-top: 32px; }
-.owner-group-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #555;
-  margin-bottom: 14px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #e8e8e8;
+.owner-group-title { font-size: 15px; font-weight: 600; color: var(--text-muted); margin-bottom: 12px; }
+
+/* ─── Режим сортировки ─── */
+.sort-list { display: flex; flex-direction: column; gap: 8px; max-width: 600px; }
+.sort-item {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 16px; cursor: grab; user-select: none; transition: box-shadow 0.2s;
 }
-.project-card-member { border-left: 3px solid #7b1fa2; }
+.sort-item:active { cursor: grabbing; }
+.sort-item.dragging { box-shadow: var(--shadow-md); border-color: var(--accent); }
+.sort-item-handle { color: #c2c6cc; font-size: 18px; flex-shrink: 0; }
+.sort-item-num { color: var(--text-faint); font-size: 14px; min-width: 24px; flex-shrink: 0; }
+.sort-item-name { font-size: 15px; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Приглашение в команду */
-.team-invitation-card { background: #f3e5f5; border-color: #7b1fa2; }
-.team-invitation-card h3 { color: #4a148c; }
+/* ─── Пустое состояние ─── */
+.empty-state {
+  text-align: center; padding: 48px 20px; color: var(--text-muted);
+  background: var(--surface); border: 1px dashed #d5d9de; border-radius: 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.empty-state-icon { font-size: 36px; margin-bottom: 4px; }
+.empty-state-title { font-size: 16px; font-weight: 600; color: var(--text); }
+.empty-state p { font-size: 14px; }
+.empty-state .btn-primary { margin-top: 12px; }
 
-/* Pending участник команды */
-.team-member-pending { opacity: 0.7; background: #fafafa; }
+/* ─── Мои задачи ─── */
+.mytasks-subtabs { display: flex; gap: 16px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
+.subtab-btn {
+  padding: 8px 2px; background: none; border-radius: 0; font-size: 14px; color: var(--text-muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  display: flex; align-items: center; gap: 6px;
+}
+.subtab-btn:hover { color: var(--text); }
+.subtab-btn.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+
+.mytasks-list { display: flex; flex-direction: column; gap: 8px; }
+.mytask-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius); padding: 12px 16px;
+  cursor: pointer; transition: box-shadow 0.2s;
+}
+.mytask-card:hover { box-shadow: var(--shadow-md); }
+.mytask-card.overdue { border-left-color: var(--danger); }
+.mytask-card.due-soon { border-left-color: var(--warning); }
+.mytask-card.done { border-left-color: #c2c6cc; opacity: 0.75; }
+.mytask-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+.mytask-project { font-size: 12px; color: var(--accent); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mytask-status { font-size: 12px; color: var(--text-muted); background: #f1f3f5; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+.mytask-status.done-status { background: var(--accent-soft); color: var(--accent); }
+.mytask-title { margin: 0 0 4px; font-size: 15px; font-weight: 600; word-break: break-word; }
+.mytask-desc {
+  margin: 0 0 8px; font-size: 13px; color: var(--text-muted);
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.mytask-footer { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mytask-deadline { font-size: 13px; color: var(--text-muted); }
+.mytask-deadline.overdue { color: var(--danger); font-weight: 600; }
+.mytask-deadline.due-soon { color: #e65100; font-weight: 600; }
+.mytask-report-badge { font-size: 12px; color: var(--accent); font-weight: 600; }
+
+/* ─── Команда ─── */
+.team-section h2 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+.team-hint { color: var(--text-muted); font-size: 14px; margin-bottom: 18px; }
+.team-add-form {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 18px; margin-bottom: 18px;
+}
+.team-add-form h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+.team-invite-row { display: flex; gap: 8px; }
+.team-email-input {
+  flex: 1; min-width: 0; padding: 9px 12px;
+  border: 1px solid #d6d9dd; border-radius: 6px;
+  font-size: 14px; font-family: inherit; outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+}
+.team-email-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 184, 76, 0.15); }
+.team-error { color: var(--danger); font-size: 13px; margin: 8px 0 0; }
+.team-success { color: var(--accent); font-size: 13px; margin: 8px 0 0; }
+
+.team-list { display: flex; flex-direction: column; gap: 8px; }
+.team-member-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 16px; display: flex; align-items: center; gap: 14px;
+}
+.team-member-avatar {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--accent); color: white; font-size: 16px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.team-member-info { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.team-member-name { font-size: 15px; font-weight: 500; }
+.team-member-email { font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
+.team-member-pending { background: #fafbfc; }
+.team-member-pending .team-member-avatar { background: #c2c6cc; }
 .pending-badge {
   display: inline-block; margin-left: 8px;
-  font-size: 11px; color: #ff9800;
-  background: #fff8e1; padding: 1px 6px;
-  border-radius: 10px; border: 1px solid #ffe082;
+  font-size: 11px; color: #b26a00; background: #fff4e5;
+  padding: 1px 8px; border-radius: 10px;
+}
+
+/* ─── Адаптивность ─── */
+@media (max-width: 700px) {
+  .dashboard-main { padding: 20px 16px 40px; }
+  .dashboard-greeting h1 { font-size: 21px; }
+  .dashboard-tabs { display: flex; }
+  .tab-btn { flex: 1; justify-content: center; padding: 8px 6px; font-size: 13px; gap: 4px; }
+  .invitation-actions { width: 100%; }
+  .invitation-actions button { flex: 1; }
+  .team-invite-row { flex-direction: column; }
+  .projects-grid { grid-template-columns: 1fr; }
 }
