@@ -1,0 +1,15 @@
+# Зависимости и кэш сборки (восстанавливаются через npm install)
+node_modules/
+
+# Секреты — пример настроек в backend/.env.example
+backend/.env
+
+# Файлы задач, загруженные пользователями
+backend/uploads/
+backend/storage/
+
+# macOS
+.DS_Store
+
+# Логи
+npm-debug.log*
