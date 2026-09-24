@@ -10,12 +10,15 @@ const { sendTaskAssigned } = require('../services/email');
 const router = express.Router();
 router.use(authMiddleware);
 
+// Файлы задач лежат вне папки, которую раздаёт nginx (/uploads/), —
+// скачать их можно только через API с проверкой доступа к проекту
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../storage/uploads');
+
 // Настройка multer
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadsDir = path.join(__dirname, '../uploads');
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-    cb(null, uploadsDir);
+    if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    cb(null, UPLOADS_DIR);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -242,7 +245,7 @@ router.delete('/:id', requireTaskAccess, async (req, res) => {
       'SELECT filename FROM task_attachments WHERE task_id = $1', [id]
     );
     attachments.forEach(att => {
-      const filePath = path.join(__dirname, '../uploads', att.filename);
+      const filePath = path.join(UPLOADS_DIR, att.filename);
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     });
     await pool.query('DELETE FROM tasks WHERE id = $1', [id]);
@@ -322,7 +325,7 @@ router.get('/:taskId/attachments/:fileId/download', requireTaskAccess, async (re
       'SELECT * FROM task_attachments WHERE id = $1 AND task_id = $2', [fileId, taskId]
     );
     if (files.length === 0) return res.status(404).json({ error: req.t('fileNotFound') });
-    const filePath = path.join(__dirname, '../uploads', files[0].filename);
+    const filePath = path.join(UPLOADS_DIR, files[0].filename);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: req.t('fileMissingOnServer') });
     res.download(filePath, files[0].original_name);
   } catch (error) {
@@ -338,7 +341,7 @@ router.delete('/:taskId/attachments/:fileId', requireTaskAccess, async (req, res
       'SELECT * FROM task_attachments WHERE id = $1 AND task_id = $2', [fileId, taskId]
     );
     if (files.length === 0) return res.status(404).json({ error: req.t('fileNotFound') });
-    const filePath = path.join(__dirname, '../uploads', files[0].filename);
+    const filePath = path.join(UPLOADS_DIR, files[0].filename);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     await pool.query('DELETE FROM task_attachments WHERE id = $1', [fileId]);
     res.json({ message: req.t('fileDeleted') });
