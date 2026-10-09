@@ -1,0 +1,151 @@
+/* Меню аккаунта: кнопка-«чип» в шапке и выпадающая панель настроек */
+.account-menu {
+  position: relative;
+}
+
+.account-menu-trigger {
+  min-height: 0;
+  gap: var(--space-2);
+  padding: 4px 10px 4px 4px;
+  border: 1px solid transparent;
+  font-weight: var(--weight-medium);
+}
+
+.account-menu-trigger:hover,
+.account-menu-trigger.is-open {
+  background: var(--color-surface-active);
+}
+
+.account-menu-trigger:active:not(:disabled) {
+  transform: none;
+}
+
+.account-menu-chevron {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  transition: transform var(--dur) var(--ease-out);
+}
+
+.account-menu-trigger.is-open .account-menu-chevron {
+  transform: rotate(180deg);
+}
+
+.account-menu-panel {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: calc(var(--z-header) + 1);
+  width: 18.5rem;
+  max-width: calc(100vw - 2 * var(--space-4));
+  padding: var(--space-2);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: account-menu-in var(--dur) var(--ease-out);
+}
+
+@keyframes account-menu-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.account-menu-user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.account-menu-user-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.account-menu-name,
+.account-menu-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu-name {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.account-menu-email {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.account-menu-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-2) var(--space-2);
+}
+
+.account-menu-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.account-menu-value {
+  font-weight: var(--weight-medium);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-text);
+}
+
+.account-menu-segmented {
+  display: flex;
+  width: 100%;
+}
+
+.account-menu-segmented .segmented-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+
+/* Буква «A» растёт от маленького размера к большому — понятно без подписи */
+.account-size-btn span { line-height: 1; font-weight: var(--weight-semibold); }
+.account-size-0 span { font-size: 0.75rem; }
+.account-size-1 span { font-size: 0.875rem; }
+.account-size-2 span { font-size: 1rem; }
+.account-size-3 span { font-size: 1.1875rem; }
+
+@media (max-width: 700px) {
+  .account-menu-trigger {
+    padding: 4px;
+  }
+
+  .account-menu-trigger .account-menu-chevron {
+    display: none;
+  }
+
+  .account-menu-panel {
+    position: fixed;
+    top: calc(var(--header-height) + var(--space-1));
+    right: var(--space-4);
+    left: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-menu-panel {
+    animation: none;
+  }
+}

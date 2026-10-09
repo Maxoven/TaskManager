@@ -1,9 +1,16 @@
 #!/bin/bash
 # Выкладка Task Manager на сервер (хост "taskmanager" из ~/.ssh/config).
-# Запуск из корня репозитория: ./deploy.sh
-# Перед запуском соберите фронтенд: (cd frontend && npm run build)
+# Готовая сборка фронтенда (frontend/build) хранится в репозитории, поэтому достаточно:
+#   git pull && ./deploy.sh
+# Если меняли код фронтенда сами — сначала пересоберите: (cd frontend && npm run build)
 set -euo pipefail
 cd "$(dirname "$0")"
+
+if [ ! -f frontend/build/index.html ]; then
+  echo "Нет frontend/build — соберите фронтенд: (cd frontend && npm run build)" >&2
+  exit 1
+fi
+echo "Выкладываю $(git rev-parse --abbrev-ref HEAD 2>/dev/null) @ $(git log -1 --format='%h %s' 2>/dev/null)"
 
 HOST=taskmanager
 REMOTE=/var/www/taskmanager

@@ -30,6 +30,19 @@ const translations = {
     assistantClearText: 'Все сообщения с ассистентом будут удалены. Задачи и файлы это не затронет.',
     assistantClearConfirm: 'Очистить',
     assistantError: 'Ассистент не ответил. Попробуйте ещё раз.',
+    assistantBarPlaceholder: 'Спросите ассистента про задачи, сроки, отчёты и файлы…',
+    assistantCollapse: 'Свернуть чат',
+    assistantShowChat: 'Открыть переписку',
+
+    // Меню аккаунта
+    accountMenuLabel: 'Аккаунт: {name}',
+    accountSettings: 'Настройки аккаунта',
+    settingsLanguage: 'Язык',
+    settingsInterfaceSize: 'Размер интерфейса',
+    interfaceSize_small: 'Мелкий',
+    interfaceSize_default: 'Обычный',
+    interfaceSize_large: 'Крупный',
+    interfaceSize_xlarge: 'Очень крупный',
     hi: 'Привет',
 
     // Auth — Login
@@ -432,6 +445,19 @@ const translations = {
     assistantClearText: 'All messages with the assistant will be deleted. Tasks and files are not affected.',
     assistantClearConfirm: 'Clear',
     assistantError: 'The assistant did not respond. Please try again.',
+    assistantBarPlaceholder: 'Ask the assistant about tasks, deadlines, reports and files…',
+    assistantCollapse: 'Collapse chat',
+    assistantShowChat: 'Show conversation',
+
+    // Account menu
+    accountMenuLabel: 'Account: {name}',
+    accountSettings: 'Account settings',
+    settingsLanguage: 'Language',
+    settingsInterfaceSize: 'Interface size',
+    interfaceSize_small: 'Small',
+    interfaceSize_default: 'Default',
+    interfaceSize_large: 'Large',
+    interfaceSize_xlarge: 'Extra large',
     hi: 'Hi',
 
     // Auth — Login

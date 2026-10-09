@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useFeedback } from '../context/FeedbackContext';
 import { getAssistant, sendAssistantMessage, clearAssistant } from '../services/api';
@@ -7,11 +7,14 @@ import Icon from './Icon';
 import './AssistantBar.css';
 
 const MAX_LENGTH = 2000;
+const MAX_INPUT_HEIGHT = 140;
 const SUGGESTION_KEYS = ['assistantSuggestOverdue', 'assistantSuggestWeek', 'assistantSuggestReports', 'assistantSuggestFiles'];
 
-// ИИ-ассистент: тонкая полоска под шапкой, по нажатию раскрывается в чат.
+// ИИ-ассистент: строка ввода с кнопкой «Отправить» под шапкой. Как только
+// пользователь начинает печатать, строка раскрывается в окно чата и сдвигает
+// содержимое страницы вниз (не перекрывает его).
 // Сервер хранит последние 20 сообщений переписки на пользователя.
-function AssistantBar() {
+function AssistantBar({ wide = false }) {
   const { t } = useLanguage();
   const { notify, confirm } = useFeedback();
   const [enabled, setEnabled] = useState(false);
@@ -34,13 +37,13 @@ function AssistantBar() {
         setMessages(data.messages || []);
         if (data.limit) setLimit(data.limit);
       })
-      .catch(() => { /* ассистент — дополнение: при сбое просто не показываем полоску */ });
+      .catch(() => { /* ассистент — дополнение: при сбое просто не показываем строку */ });
     return () => { cancelled = true; };
   }, []);
 
   const close = useCallback(() => setOpen(false), []);
 
-  // Escape и щелчок мимо панели сворачивают чат
+  // Escape сворачивает чат обратно в строку ввода
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => {
@@ -49,19 +52,23 @@ function AssistantBar() {
       if (document.querySelector('.modal-overlay')) return;
       close();
     };
-    const onPointer = (e) => {
-      if (rootRef.current && !rootRef.current.contains(e.target) && !e.target.closest('.modal-overlay')) close();
-    };
     window.addEventListener('keydown', onKey);
-    document.addEventListener('mousedown', onPointer);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      document.removeEventListener('mousedown', onPointer);
-    };
+    return () => window.removeEventListener('keydown', onKey);
   }, [open, close]);
 
+  // Поле растёт вместе с текстом (до MAX_INPUT_HEIGHT), дальше — прокрутка внутри
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`;
+  }, [draft, open, enabled]);
+
+  // Чат раскрылся — строка ввода сместилась вниз; держим её в поле зрения
   useEffect(() => {
-    if (open) inputRef.current?.focus();
+    if (!open) return;
+    const form = rootRef.current?.querySelector('.assistant-form');
+    form?.scrollIntoView?.({ block: 'nearest' });
   }, [open]);
 
   // Показываем последний вопрос вверху списка: длинный ответ читается с начала, а не с конца
@@ -76,6 +83,7 @@ function AssistantBar() {
   const send = async (text) => {
     const question = text.trim();
     if (!question || pending) return;
+    setOpen(true);
     setError('');
     setDraft('');
     setPending(question);
@@ -89,6 +97,13 @@ function AssistantBar() {
       setPending(null);
       inputRef.current?.focus();
     }
+  };
+
+  const handleChange = (e) => {
+    const value = e.target.value;
+    setDraft(value);
+    // Начали печатать — раскрываем чат
+    if (value.trim() && !open) setOpen(true);
   };
 
   const handleSubmit = (e) => {
@@ -121,28 +136,49 @@ function AssistantBar() {
     }
   };
 
+  const openChat = () => {
+    setOpen(true);
+    inputRef.current?.focus();
+  };
+
   if (!enabled) return null;
 
   const isEmpty = messages.length === 0 && !pending;
 
   return (
-    <div className={`assistant ${open ? 'assistant-open' : ''}`} ref={rootRef}>
-      <button
-        type="button"
-        className="assistant-strip"
-        onClick={() => setOpen(v => !v)}
-        aria-expanded={open}
-        aria-controls="assistant-panel"
+    <div className={`assistant-region ${wide ? 'assistant-region-wide' : ''}`}>
+      <section
+        className={`assistant ${open ? 'assistant-open' : ''}`}
+        ref={rootRef}
+        aria-label={t('assistantTitle')}
       >
-        <Icon name="sparkles" size={16} className="assistant-strip-icon" />
-        <span className="assistant-strip-title">{t('assistantTitle')}</span>
-        <span className="assistant-strip-hint">{t('assistantStripHint')}</span>
-        <Icon name="chevron-down" size={16} className="assistant-strip-chevron" />
-      </button>
+        {open && (
+          <div className="assistant-head">
+            <span className="assistant-head-icon" aria-hidden="true"><Icon name="sparkles" size={16} /></span>
+            <span className="assistant-head-title">{t('assistantTitle')}</span>
+            <span className="assistant-head-hint">{t('assistantStripHint')}</span>
+            {messages.length > 0 && (
+              <button type="button" className="assistant-clear" onClick={handleClear} disabled={!!pending}>
+                <Icon name="trash" size={14} />
+                <span className="assistant-clear-text">{t('assistantClear')}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn-icon assistant-collapse"
+              onClick={close}
+              aria-expanded="true"
+              aria-controls="assistant-messages"
+              aria-label={t('assistantCollapse')}
+              title={t('assistantCollapse')}
+            >
+              <Icon name="chevron-down" size={18} />
+            </button>
+          </div>
+        )}
 
-      {open && (
-        <section className="assistant-panel" id="assistant-panel" aria-label={t('assistantTitle')}>
-          <div className="assistant-messages" ref={listRef} aria-live="polite">
+        {open && (
+          <div className="assistant-messages" id="assistant-messages" ref={listRef} aria-live="polite">
             {isEmpty ? (
               <div className="assistant-empty">
                 <p className="assistant-empty-title">{t('assistantEmptyTitle')}</p>
@@ -175,39 +211,47 @@ function AssistantBar() {
               </ul>
             )}
           </div>
+        )}
 
-          {error && <p className="assistant-error" role="alert">{error}</p>}
+        {open && error && <p className="assistant-error" role="alert">{error}</p>}
 
-          <form className="assistant-form" onSubmit={handleSubmit}>
-            <label htmlFor="assistant-input" className="visually-hidden">{t('assistantInputLabel')}</label>
-            <textarea
-              id="assistant-input"
-              ref={inputRef}
-              className="assistant-input"
-              rows={1}
-              value={draft}
-              maxLength={MAX_LENGTH}
-              placeholder={t('assistantPlaceholder')}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={handleKeyDown}
-            />
-            <button type="submit" className="btn-primary assistant-send" disabled={!draft.trim() || !!pending} aria-label={t('assistantSend')} title={t('assistantSend')}>
-              <Icon name="send" size={18} />
+        {/* Строка ввода всегда на месте в дереве — фокус и набранный текст не теряются при раскрытии */}
+        <form className="assistant-form" onSubmit={handleSubmit}>
+          {!open && <Icon name="sparkles" size={18} className="assistant-form-icon" />}
+          <label htmlFor="assistant-input" className="visually-hidden">{t('assistantInputLabel')}</label>
+          <textarea
+            id="assistant-input"
+            ref={inputRef}
+            className="assistant-input"
+            rows={1}
+            value={draft}
+            maxLength={MAX_LENGTH}
+            placeholder={open ? t('assistantPlaceholder') : t('assistantBarPlaceholder')}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+          />
+          {!open && messages.length > 0 && (
+            <button
+              type="button"
+              className="btn-ghost assistant-history"
+              onClick={openChat}
+              aria-expanded="false"
+              aria-controls="assistant-messages"
+            >
+              {t('assistantShowChat')}
             </button>
-          </form>
+          )}
+          <button type="submit" className="btn-primary assistant-send" disabled={!draft.trim() || !!pending} aria-label={t('assistantSend')} title={t('assistantSend')}>
+            <Icon name="send" size={18} />
+          </button>
+        </form>
 
-          <div className="assistant-footer">
-            <span className="assistant-note">
-              {t('assistantNote', { limit })} <span className="assistant-keys-hint">{t('assistantKeysHint')}</span>
-            </span>
-            {messages.length > 0 && (
-              <button type="button" className="assistant-clear" onClick={handleClear} disabled={!!pending}>
-                {t('assistantClear')}
-              </button>
-            )}
-          </div>
-        </section>
-      )}
+        {open && (
+          <p className="assistant-note">
+            {t('assistantNote', { limit })} <span className="assistant-keys-hint">{t('assistantKeysHint')}</span>
+          </p>
+        )}
+      </section>
     </div>
   );
 }

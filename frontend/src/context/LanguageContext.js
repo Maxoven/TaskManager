@@ -24,14 +24,16 @@ export function LanguageProvider({ children }) {
     document.documentElement.lang = lang;
   }, [lang]);
 
-  const toggleLang = () => {
-    const next = lang === 'ru' ? 'en' : 'ru';
+  const setLanguage = (next) => {
+    if (!SUPPORTED.includes(next) || next === lang) return;
     setLang(next);
     // Письма приходят на языке, сохранённом на сервере
     if (localStorage.getItem('token')) {
       saveLanguage(next).catch(() => {});
     }
   };
+
+  const toggleLang = () => setLanguage(lang === 'ru' ? 'en' : 'ru');
 
   // t('key') или t('key', { name: 'X' }) — подставляет {name} в строку
   const t = (key, vars) => {
@@ -41,7 +43,7 @@ export function LanguageProvider({ children }) {
   };
 
   return (
-    <LanguageContext.Provider value={{ lang, toggleLang, t }}>
+    <LanguageContext.Provider value={{ lang, setLanguage, toggleLang, t }}>
       {children}
     </LanguageContext.Provider>
   );

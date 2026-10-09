@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { useLanguage, LangToggle } from '../context/LanguageContext';
-import Avatar from './Avatar';
+import { useLanguage } from '../context/LanguageContext';
+import AccountMenu from './AccountMenu';
 import Icon from './Icon';
 import AssistantBar from './AssistantBar';
 import './AppHeader.css';
@@ -17,32 +17,29 @@ export function Logo({ withText = true }) {
   );
 }
 
-// Единая шапка приложения: логотип, (опционально) контент по центру, язык, пользователь, выход
+// Единая шапка приложения: логотип, (опционально) контент по центру, меню аккаунта, выход.
+// Под шапкой, в потоке страницы, — строка ИИ-ассистента.
 function AppHeader({ user, onLogout, children, wide = false }) {
   const { t } = useLanguage();
   return (
-    <header className="app-header">
-      <div className={`app-header-inner ${wide ? 'app-header-wide' : ''}`}>
-        <Link to="/" className="app-header-logo" title="Task Manager">
-          <Logo />
-        </Link>
-        {children && <div className="app-header-center">{children}</div>}
-        <div className="app-header-right">
-          <LangToggle />
-          {user && (
-            <span className="user-chip" title={user.email}>
-              <Avatar name={user.name} size="sm" className="user-chip-avatar" aria-hidden="true" />
-              <span className="user-chip-name">{user.name}</span>
-            </span>
-          )}
-          <button type="button" onClick={onLogout} className="btn-ghost btn-logout" title={t('logout')}>
-            <Icon name="logout" size={18} />
-            <span className="btn-logout-text">{t('logout')}</span>
-          </button>
+    <>
+      <header className="app-header">
+        <div className={`app-header-inner ${wide ? 'app-header-wide' : ''}`}>
+          <Link to="/" className="app-header-logo" title="Task Manager">
+            <Logo />
+          </Link>
+          {children && <div className="app-header-center">{children}</div>}
+          <div className="app-header-right">
+            {user && <AccountMenu user={user} />}
+            <button type="button" onClick={onLogout} className="btn-ghost btn-logout" title={t('logout')}>
+              <Icon name="logout" size={18} />
+              <span className="btn-logout-text">{t('logout')}</span>
+            </button>
+          </div>
         </div>
-      </div>
-      {user && <AssistantBar />}
-    </header>
+      </header>
+      {user && <AssistantBar wide={wide} />}
+    </>
   );
 }
 
