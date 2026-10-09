@@ -1,62 +1,55 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { verifyEmail } from '../services/api';
-import './Auth.css';
+import { useLanguage } from '../context/LanguageContext';
+import AuthLayout, { AuthStatus } from './AuthLayout';
+import apiError from '../utils/apiError';
 
 function VerifyEmail({ onLogin }) {
+  const { t } = useLanguage();
   const { token } = useParams();
   const navigate = useNavigate();
-  const [status, setStatus] = useState('loading'); // loading | success | error
+  const [status, setStatus] = useState('loading');
   const [message, setMessage] = useState('');
 
+  // Ссылка одноразовая: повторный запрос (StrictMode в dev) получил бы «ссылка недействительна»
+  const requested = useRef(false);
+
   useEffect(() => {
+    if (requested.current) return;
+    requested.current = true;
     const verify = async () => {
       try {
         const response = await verifyEmail(token);
         setStatus('success');
-        // Автоматически логиним пользователя
         if (response.data.user && response.data.token) {
-          setTimeout(() => {
-            onLogin(response.data.user, response.data.token);
-            navigate('/');
-          }, 2000);
+          setTimeout(() => { onLogin(response.data.user, response.data.token); navigate('/'); }, 2000);
         }
       } catch (err) {
         setStatus('error');
-        setMessage(err.response?.data?.error || 'Ссылка недействительна или истекла');
+        setMessage(apiError(err, t, 'verifyErrorTitle'));
       }
     };
     verify();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   return (
-    <div className="auth-container">
-      <div className="auth-box" style={{ textAlign: 'center' }}>
-        {status === 'loading' && (
-          <>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
-            <h2>Подтверждаем email...</h2>
-          </>
-        )}
-        {status === 'success' && (
-          <>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
-            <h2>Email подтверждён!</h2>
-            <p style={{ color: '#555' }}>Выполняем вход в систему...</p>
-          </>
-        )}
-        {status === 'error' && (
-          <>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>❌</div>
-            <h2>Ошибка подтверждения</h2>
-            <p style={{ color: '#888' }}>{message}</p>
-            <p style={{ marginTop: 16, fontSize: 13 }}>
-              <Link to="/login">← Вернуться ко входу</Link>
-            </p>
-          </>
-        )}
-      </div>
-    </div>
+    <AuthLayout>
+      {status === 'loading' && <AuthStatus kind="loading" title={t('verifyLoading')} />}
+      {status === 'success' && (
+        <AuthStatus kind="success" title={t('verifySuccess')}>
+          <p className="auth-status-text">{t('verifySuccessText')}</p>
+        </AuthStatus>
+      )}
+      {status === 'error' && (
+        <AuthStatus kind="error" title={t('verifyErrorTitle')}>
+          <p className="auth-status-text">{message}</p>
+          <p className="auth-status-hint">{t('verifyErrorHint')}</p>
+          <Link to="/login" className="btn-primary auth-status-action">{t('verifyGoToLogin')}</Link>
+        </AuthStatus>
+      )}
+    </AuthLayout>
   );
 }
 

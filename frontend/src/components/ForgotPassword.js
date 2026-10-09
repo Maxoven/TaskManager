@@ -1,72 +1,53 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { forgotPassword } from '../services/api';
-import './Auth.css';
+import { useLanguage } from '../context/LanguageContext';
+import AuthLayout, { AuthStatus } from './AuthLayout';
+import apiError from '../utils/apiError';
+import Icon from './Icon';
 
 function ForgotPassword() {
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      await forgotPassword(email);
-      setSent(true);
-    } catch (err) {
-      setError(err.response?.data?.error || 'Ошибка отправки письма');
-    } finally {
-      setLoading(false);
-    }
+    e.preventDefault(); setError(''); setLoading(true);
+    try { await forgotPassword(email); setSent(true); }
+    catch (err) { setError(apiError(err, t, 'forgotError')); }
+    finally { setLoading(false); }
   };
 
   if (sent) {
     return (
-      <div className="auth-container">
-        <div className="auth-box">
-          <div className="success-icon">✅</div>
-          <h2>Письмо отправлено</h2>
-          <p>Если email <strong>{email}</strong> зарегистрирован в системе, вы получите письмо со ссылкой для сброса пароля.</p>
-          <p style={{ color: '#888', fontSize: '14px' }}>Ссылка действительна 1 час. Проверьте папку «Спам».</p>
-          <Link to="/login" className="btn-primary" style={{ display: 'block', textAlign: 'center', marginTop: '16px' }}>
-            Вернуться ко входу
-          </Link>
-        </div>
-      </div>
+      <AuthLayout>
+        <AuthStatus kind="mail" title={t('forgotSentTitle')}>
+          <p className="auth-status-text">{t('forgotSentText')}</p>
+          <p className="auth-status-hint">{t('forgotSentHint')}</p>
+          <Link to="/login" className="btn-primary auth-status-action">{t('forgotBackBtn')}</Link>
+        </AuthStatus>
+      </AuthLayout>
     );
   }
 
   return (
-    <div className="auth-container">
-      <div className="auth-box">
-        <h1>Сброс пароля</h1>
-        <p style={{ color: '#666', marginBottom: '20px' }}>
-          Введите email вашего аккаунта и мы отправим ссылку для сброса пароля.
-        </p>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="your@email.com"
-            />
-          </div>
-          {error && <div className="error">{error}</div>}
-          <button type="submit" disabled={loading} className="btn-primary">
-            {loading ? 'Отправка...' : 'Отправить ссылку'}
-          </button>
-        </form>
-        <p className="auth-link">
-          <Link to="/login">← Назад ко входу</Link>
-        </p>
-      </div>
-    </div>
+    <AuthLayout>
+      <h1>{t('forgotTitle')}</h1>
+      <p className="auth-intro">{t('forgotHint')}</p>
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label htmlFor="forgot-email">{t('loginEmail')}</label>
+          <input id="forgot-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="name@example.com" autoComplete="email" autoFocus />
+        </div>
+        {error && <div className="error" role="alert">{error}</div>}
+        <button type="submit" disabled={loading} className="btn-primary">
+          {loading ? t('forgotLoading') : t('forgotBtn')}
+        </button>
+      </form>
+      <p className="auth-link"><Link to="/login"><Icon name="arrow-left" />{t('forgotBackToLogin')}</Link></p>
+    </AuthLayout>
   );
 }
 

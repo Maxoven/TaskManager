@@ -7,8 +7,24 @@ const api = axios.create({ baseURL: API_URL });
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  // Язык интерфейса — чтобы сервер отвечал (и писал письма) на нём же
+  config.headers['X-Lang'] = localStorage.getItem('lang') || 'ru';
   return config;
 });
+
+// Токен истёк или недействителен — выходим и отправляем на страницу входа
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const hadToken = !!localStorage.getItem('token');
+    if (error.response?.status === 401 && hadToken) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.assign('/login');
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Auth
 export const register = (data) => api.post('/auth/register', data);
@@ -16,6 +32,7 @@ export const login = (data) => api.post('/auth/login', data);
 export const forgotPassword = (email) => api.post('/auth/forgot-password', { email });
 export const resetPassword = (token, password) => api.post('/auth/reset-password', { token, password });
 export const checkResetToken = (token) => api.get(`/auth/reset-password/${token}`);
+export const saveLanguage = (language) => api.patch('/auth/language', { language });
 
 // Projects
 export const getProjects = () => api.get('/projects');
@@ -30,6 +47,7 @@ export const respondToInvitation = (projectId, action) =>
   api.patch(`/projects/${projectId}/invitation/${action}`);
 export const getPendingInvitations = () => api.get('/projects/invitations/pending');
 export const removeProjectMember = (projectId, userId) => api.delete(`/projects/${projectId}/members/${userId}`);
+export const leaveProject = (projectId) => api.post(`/projects/${projectId}/leave`);
 
 // Tasks
 export const createTask = (data) => api.post('/tasks', data);
@@ -56,12 +74,19 @@ export const downloadFile = (taskId, fileId) =>
   api.get(`/tasks/${taskId}/attachments/${fileId}/download`, { responseType: 'blob' });
 export const deleteFile = (taskId, fileId) => api.delete(`/tasks/${taskId}/attachments/${fileId}`);
 
+// ИИ-ассистент
+export const getAssistant = () => api.get('/assistant');
+export const sendAssistantMessage = (text) => api.post('/assistant/messages', { text }, { timeout: 180000 });
+export const clearAssistant = () => api.delete('/assistant/messages');
+
 // Team
 export const getTeam = () => api.get('/team');
 export const addTeamMember = (email) => api.post('/team', { email });
 export const removeTeamMember = (memberId) => api.delete(`/team/${memberId}`);
 export const getTeamInvitations = () => api.get('/team/invitations');
 export const respondToTeamInvitation = (ownerId, action) => api.patch(`/team/invitations/${ownerId}/${action}`);
+export const getTeamMemberships = () => api.get('/team/memberships');
+export const leaveTeam = (ownerId) => api.delete(`/team/memberships/${ownerId}`);
 
 // Email verification
 export const verifyEmail = (token) => api.get(`/auth/verify-email/${token}`);

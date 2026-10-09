@@ -1,108 +1,86 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { register, resendVerification } from '../services/api';
-import './Auth.css';
+import { useLanguage } from '../context/LanguageContext';
+import AuthLayout, { AuthStatus, PasswordField } from './AuthLayout';
+import apiError from '../utils/apiError';
+import Icon from './Icon';
 
 function Register() {
+  const { t } = useLanguage();
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [registered, setRegistered] = useState(false);
-  const [resendLoading, setResendLoading] = useState(false);
-  const [resendMsg, setResendMsg] = useState('');
+  const [resend, setResend] = useState({ state: 'idle', text: '' }); // idle | sending | done | error
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-
-    if (formData.password !== formData.confirmPassword) {
-      setError('Пароли не совпадают'); return;
-    }
-    if (formData.password.length < 8) {
-      setError('Пароль должен содержать минимум 8 символов'); return;
-    }
-
+    e.preventDefault(); setError('');
+    if (formData.password.length < 8) { setError(t('registerPasswordShort')); return; }
+    if (formData.password !== formData.confirmPassword) { setError(t('registerPasswordMismatch')); return; }
     setLoading(true);
     try {
       await register({ name: formData.name, email: formData.email, password: formData.password });
       setRegistered(true);
     } catch (err) {
-      setError(err.response?.data?.error || 'Ошибка регистрации');
-    } finally {
-      setLoading(false);
-    }
+      setError(apiError(err, t, 'registerError'));
+    } finally { setLoading(false); }
   };
 
   const handleResend = async () => {
-    setResendLoading(true);
-    setResendMsg('');
+    setResend({ state: 'sending', text: '' });
     try {
       await resendVerification(formData.email);
-      setResendMsg('Письмо отправлено повторно!');
-    } catch {
-      setResendMsg('Не удалось отправить письмо');
-    } finally {
-      setResendLoading(false);
+      setResend({ state: 'done', text: t('registerResendDone') });
+    } catch (err) {
+      setResend({ state: 'error', text: apiError(err, t, 'registerResendError') });
     }
   };
 
   if (registered) {
     return (
-      <div className="auth-container">
-        <div className="auth-box">
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>📬</div>
-            <h2>Проверьте почту!</h2>
-            <p style={{ color: '#555', marginBottom: 8 }}>
-              Мы отправили письмо на <strong>{formData.email}</strong>
-            </p>
-            <p style={{ color: '#888', fontSize: 14, marginBottom: 24 }}>
-              Перейдите по ссылке в письме чтобы подтвердить аккаунт и войти. Ссылка действует 24 часа.
-            </p>
-            <button onClick={handleResend} disabled={resendLoading} className="btn-secondary" style={{ fontSize: 13 }}>
-              {resendLoading ? 'Отправляем...' : 'Отправить письмо повторно'}
-            </button>
-            {resendMsg && <p style={{ marginTop: 10, fontSize: 13, color: '#25b84c' }}>{resendMsg}</p>}
-            <p style={{ marginTop: 24, fontSize: 13 }}>
-              <Link to="/login">← Вернуться ко входу</Link>
-            </p>
-          </div>
-        </div>
-      </div>
+      <AuthLayout>
+        <AuthStatus kind="mail" title={t('registerCheckEmail')}>
+          <p className="auth-status-text">{t('registerEmailSent')} <strong>{formData.email}</strong></p>
+          <p className="auth-status-hint">{t('registerEmailHint')}</p>
+          <p className="auth-status-hint">{t('registerSpamHint')}</p>
+          <button type="button" onClick={handleResend} disabled={resend.state === 'sending'} className="btn-secondary">
+            {resend.state === 'sending' ? t('registerResendLoading') : t('registerResend')}
+          </button>
+          {resend.text && (
+            <p className={resend.state === 'error' ? 'field-error' : 'auth-notice-success'} role="status">{resend.text}</p>
+          )}
+          <p className="auth-link"><Link to="/login"><Icon name="arrow-left" />{t('registerBackToLogin')}</Link></p>
+        </AuthStatus>
+      </AuthLayout>
     );
   }
 
   return (
-    <div className="auth-container">
-      <div className="auth-box">
-        <h1>Регистрация</h1>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Имя</label>
-            <input type="text" name="name" value={formData.name} onChange={handleChange} required placeholder="Ваше имя" />
-          </div>
-          <div className="form-group">
-            <label>Email</label>
-            <input type="email" name="email" value={formData.email} onChange={handleChange} required placeholder="your@email.com" />
-          </div>
-          <div className="form-group">
-            <label>Пароль</label>
-            <input type="password" name="password" value={formData.password} onChange={handleChange} required placeholder="Минимум 8 символов" minLength={8} />
-          </div>
-          <div className="form-group">
-            <label>Подтвердите пароль</label>
-            <input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} required placeholder="Повторите пароль" />
-          </div>
-          {error && <div className="error">{error}</div>}
-          <button type="submit" disabled={loading} className="btn-primary">
-            {loading ? 'Регистрация...' : 'Зарегистрироваться'}
-          </button>
-        </form>
-        <p className="auth-link">Уже есть аккаунт? <Link to="/login">Войти</Link></p>
-      </div>
-    </div>
+    <AuthLayout>
+      <h1>{t('registerTitle')}</h1>
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label htmlFor="register-name">{t('registerName')}</label>
+          <input id="register-name" type="text" name="name" value={formData.name} onChange={handleChange} required placeholder={t('registerNamePlaceholder')} autoComplete="name" autoFocus aria-describedby="register-name-hint" />
+          <p id="register-name-hint" className="field-hint">{t('registerNameHint')}</p>
+        </div>
+        <div className="form-group">
+          <label htmlFor="register-email">{t('loginEmail')}</label>
+          <input id="register-email" type="email" name="email" value={formData.email} onChange={handleChange} required placeholder="name@example.com" autoComplete="email" aria-describedby="register-email-hint" />
+          <p id="register-email-hint" className="field-hint">{t('registerEmailFieldHint')}</p>
+        </div>
+        <PasswordField label={t('loginPassword')} name="password" value={formData.password} onChange={handleChange} minLength={8} autoComplete="new-password" hint={t('registerPasswordPlaceholder')} />
+        <PasswordField label={t('registerConfirmPassword')} name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} autoComplete="new-password" />
+        {error && <div className="error" role="alert">{error}</div>}
+        <button type="submit" disabled={loading} className="btn-primary">
+          {loading ? t('registerLoading') : t('registerBtn')}
+        </button>
+      </form>
+      <p className="auth-link">{t('registerHaveAccount')} <Link to="/login">{t('registerLoginLink')}</Link></p>
+    </AuthLayout>
   );
 }
 

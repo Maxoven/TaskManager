@@ -1,0 +1,135 @@
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  background: var(--color-header);
+  border-bottom: 1px solid var(--color-border);
+  -webkit-backdrop-filter: saturate(1.4) blur(12px);
+  backdrop-filter: saturate(1.4) blur(12px);
+}
+
+.app-header-inner {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.app-header-wide {
+  max-width: none;
+  padding: 0 var(--page-gutter);
+}
+
+.app-header-logo {
+  flex-shrink: 0;
+  color: inherit;
+  border-radius: var(--radius-md);
+}
+
+.app-header-logo:hover {
+  text-decoration: none;
+}
+
+.app-header-center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.app-header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* Логотип: зелёный квадрат с сегодняшним числом — как фавикон */
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--color-brand);
+  /* Число на фирменном зелёном — часть знака, как на фавиконе */
+  color: #fff;
+  font-size: 1rem;
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.12), var(--shadow-xs);
+}
+
+.logo-text {
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.015em;
+  color: var(--color-text);
+}
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 220px;
+  padding: 4px 12px 4px 4px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-sunken);
+}
+
+.user-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.btn-logout {
+  padding: 0 var(--space-3);
+}
+
+@media (max-width: 700px) {
+  .app-header-inner {
+    padding: 0 var(--space-4);
+    gap: var(--space-2);
+  }
+
+  .logo-text,
+  .user-chip-name {
+    display: none;
+  }
+
+  .user-chip {
+    padding: 4px;
+  }
+
+  /* Остаётся значок; подпись — для скринридеров и в подсказке */
+  .btn-logout {
+    width: 40px;
+    min-height: 40px;
+    padding: 0;
+  }
+
+  .btn-logout-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

@@ -1,40 +1,90 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { format, addDays, subDays, differenceInDays, startOfDay, eachMonthOfInterval, endOfMonth } from 'date-fns';
 import { ru } from 'date-fns/locale';
+import { useLanguage } from '../context/LanguageContext';
+import { parseDate, formatDate } from '../utils/date';
+import Icon from './Icon';
+import Avatar from './Avatar';
 import './GanttChart.css';
 
-const PERIOD_DAYS = 365;
+const MIN_PERIOD_DAYS = 365;
+const DAYS_BEFORE_TODAY = 60;
 const DAY_PX = 16;         // пикселей на день
-const ROW_H = 44;          // высота строки
-const SIDEBAR_W = 200;     // ширина колонки задач
-const HEADER_H = 36;       // высота шапки
+const ROW_H = 44;          // высота строки (то же значение — --gantt-row в GanttChart.css)
 
-function GanttChart({ tasks, onTaskClick, members }) {
+// Состояние полосы: цвет + значок (в полосе и в легенде), чтобы не полагаться только на цвет
+const BAR_ICONS = { done: 'check', report: 'file-check', overdue: 'alert' };
+
+// Задачи без обеих дат на диаграмме не помещаются — показываем их списком, чтобы не «пропадали»
+function UndatedTasks({ tasks, onTaskClick }) {
+  const { t } = useLanguage();
+  if (tasks.length === 0) return null;
+  return (
+    <details className="gantt-undated">
+      <summary><Icon name="chevron-right" size={14} className="gantt-undated-chevron" />{t('ganttUndatedSummary', { count: tasks.length })}</summary>
+      <p className="field-hint">{t('ganttUndatedHint')}</p>
+      <ul className="gantt-undated-list">
+        {tasks.map(task => (
+          <li key={task.id}>
+            <button type="button" className="btn-link" onClick={() => onTaskClick(task)}>{task.title}</button>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+function GanttChart({ tasks, onTaskClick, onAddTask, members }) {
+  const { t, lang } = useLanguage();
+  const dateLocale = lang === 'ru' ? ru : undefined;
   const today = startOfDay(new Date());
-  const [viewStart] = useState(subDays(today, 20));
   const [filterAssignee, setFilterAssignee] = useState('all');
   const scrollRef = useRef(null);
 
-  const viewEnd = addDays(viewStart, PERIOD_DAYS - 1);
-  const totalWidth = PERIOD_DAYS * DAY_PX;
+  const datedTasks = tasks.filter(task => task.start_date && task.end_date);
+  const undatedTasks = tasks.filter(task => !(task.start_date && task.end_date));
 
-  // Скролл к сегодняшнему дню при загрузке
-  useEffect(() => {
-    if (scrollRef.current) {
-      const todayPx = differenceInDays(today, viewStart) * DAY_PX;
-      scrollRef.current.scrollLeft = Math.max(0, todayPx - 100);
-    }
-  }, []);
+  // Период подстраивается под задачи: раньше окно было жёстким (60 дней назад, год всего),
+  // и задачи за его пределами молча оказывались вне шкалы
+  const todayTime = today.getTime();
+  const { viewStart, periodDays } = useMemo(() => {
+    const base = new Date(todayTime);
+    let start = subDays(base, DAYS_BEFORE_TODAY);
+    let end = addDays(start, MIN_PERIOD_DAYS - 1);
+    tasks.forEach(task => {
+      if (!task.start_date || !task.end_date) return;
+      const taskStart = subDays(startOfDay(parseDate(task.start_date)), 14);
+      const taskEnd = addDays(startOfDay(parseDate(task.end_date)), 30);
+      if (taskStart < start) start = taskStart;
+      if (taskEnd > end) end = taskEnd;
+    });
+    return { viewStart: start, periodDays: differenceInDays(end, start) + 1 };
+  }, [tasks, todayTime]);
 
-  const tasksWithDates = tasks
-    .filter(t => t.start_date && t.end_date)
+  const viewEnd = addDays(viewStart, periodDays - 1);
+  const totalWidth = periodDays * DAY_PX;
+
+  const tasksWithDates = datedTasks
     .filter(t => {
       if (filterAssignee === 'all') return true;
       return t.assignees && t.assignees.some(a => a.id === parseInt(filterAssignee));
     });
 
   // Позиция в пикселях
-  const dateToPx = (date) => differenceInDays(startOfDay(new Date(date)), viewStart) * DAY_PX;
+  const dateToPx = (date) => differenceInDays(startOfDay(parseDate(date)), viewStart) * DAY_PX;
+
+  // Скролл к сегодняшнему дню при загрузке
+  useEffect(() => {
+    if (scrollRef.current) {
+      // Показываем «сегодня», но так, чтобы начало самой ранней задачи тоже было видно
+      const todayPx = differenceInDays(today, viewStart) * DAY_PX;
+      const starts = tasks.filter(t => t.start_date).map(t => dateToPx(t.start_date));
+      const earliest = starts.length ? Math.min(...starts) : todayPx;
+      const target = Math.max(Math.min(todayPx - 100, earliest - 40), todayPx - scrollRef.current.clientWidth + 160);
+      scrollRef.current.scrollLeft = Math.max(0, target);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const getTaskBar = (task) => {
     const left = dateToPx(task.start_date);
@@ -42,16 +92,11 @@ function GanttChart({ tasks, onTaskClick, members }) {
     return { left, width: Math.max(4, right - left) };
   };
 
-  const isTaskDone = (task) => {
-    const s = (task.status_name || '').toLowerCase();
-    return s === 'готово' || s === 'done' || s === 'выполнено';
-  };
-
-  const getTaskColor = (task) => {
-    if (isTaskDone(task)) return '#66bb6a';
-    if (task.has_report) return '#26a69a';
-    if (task.end_date && new Date(task.end_date) < today) return '#ef5350';
-    return '#42a5f5';
+  const getTaskState = (task) => {
+    if (task.is_done) return 'done';
+    if (task.has_report) return 'report';
+    if (task.end_date && parseDate(task.end_date) < today) return 'overdue';
+    return 'progress';
   };
 
   // Месяцы для шапки
@@ -84,8 +129,8 @@ function GanttChart({ tasks, onTaskClick, members }) {
           <g key={`${task.id}-${dep.depends_on_task_id}`}>
             <path
               d={`M ${x1} ${y1} H ${midX} V ${y2} H ${x2}`}
+              className="gantt-arrow"
               fill="none"
-              stroke="#aaa"
               strokeWidth="1.5"
               strokeDasharray="4 2"
               markerEnd="url(#arrow)"
@@ -97,11 +142,33 @@ function GanttChart({ tasks, onTaskClick, members }) {
     return arrows;
   };
 
-  if (tasks.filter(t => t.start_date && t.end_date).length === 0) {
+  const scrollToToday = () => {
+    if (scrollRef.current) scrollRef.current.scrollLeft = Math.max(0, todayPx - 100);
+  };
+
+  if (datedTasks.length === 0) {
     return (
-      <div className="gantt-empty">
-        <p>Нет задач с установленными датами</p>
-        <p>Добавьте даты начала и окончания к задачам, чтобы увидеть диаграмму Ганта</p>
+      <div className="gantt-container">
+        <div className="gantt-empty empty-state">
+          <div className="empty-state-icon" aria-hidden="true"><Icon name="timeline" size={26} /></div>
+          <p className="empty-state-title">{tasks.length === 0 ? t('ganttNoTasksAtAll') : t('ganttNoTasks')}</p>
+          <p>{tasks.length === 0 ? t('ganttNoTasksAtAllHint') : t('ganttNoTasksHint')}</p>
+          {tasks.length === 0 && onAddTask && (
+            <button type="button" className="btn-primary" onClick={onAddTask}><Icon name="plus" />{t('newTaskBtn')}</button>
+          )}
+        </div>
+        {undatedTasks.length > 0 && (
+          <div className="gantt-undated gantt-undated-open">
+            <p className="field-hint">{t('ganttUndatedHint')}</p>
+            <ul className="gantt-undated-list">
+              {undatedTasks.map(task => (
+                <li key={task.id}>
+                  <button type="button" className="btn-link" onClick={() => onTaskClick(task)}>{task.title}</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     );
   }
@@ -114,42 +181,57 @@ function GanttChart({ tasks, onTaskClick, members }) {
       <div className="gantt-controls">
         <div className="gantt-nav">
           <span className="gantt-period-label">
-            {format(viewStart, 'd MMM yyyy', { locale: ru })} — {format(viewEnd, 'd MMM yyyy', { locale: ru })}
+            {format(viewStart, 'd MMM yyyy', { locale: dateLocale })} — {format(viewEnd, 'd MMM yyyy', { locale: dateLocale })}
           </span>
+          <button type="button" className="btn-small" onClick={scrollToToday}>{t('ganttGoToday')}</button>
         </div>
 
         <div className="gantt-filter">
-          <select className="gantt-assignee-filter" value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)}>
-            <option value="all">Все исполнители</option>
+          <label htmlFor="gantt-assignee" className="visually-hidden">{t('filterAssignee')}</label>
+          <select id="gantt-assignee" className="gantt-assignee-filter" value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)}>
+            <option value="all">{t('ganttAllAssignees')}</option>
             {members && members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
         </div>
 
         <div className="gantt-legend">
-          <div className="legend-item"><span className="legend-color" style={{ background: '#42a5f5' }}></span><span>В процессе</span></div>
-          <div className="legend-item"><span className="legend-color" style={{ background: '#66bb6a' }}></span><span>Выполнено</span></div>
-          <div className="legend-item"><span className="legend-color" style={{ background: '#26a69a' }}></span><span>Отчёт сдан</span></div>
-          <div className="legend-item"><span className="legend-color" style={{ background: '#ef5350' }}></span><span>Просрочена</span></div>
+          {[['progress', 'ganttInProgress'], ['done', 'ganttDone'], ['report', 'ganttReportSent'], ['overdue', 'ganttOverdue']].map(([state, key]) => (
+            <div key={state} className="legend-item">
+              <span className={`legend-color gantt-bar-${state}`} aria-hidden="true">
+                {BAR_ICONS[state] && <Icon name={BAR_ICONS[state]} size={11} />}
+              </span>
+              <span>{t(key)}</span>
+            </div>
+          ))}
         </div>
       </div>
 
+      <p className="field-hint gantt-hint">{t('ganttHint')}</p>
+      <UndatedTasks tasks={undatedTasks} onTaskClick={onTaskClick} />
+
+      {tasksWithDates.length === 0 && (
+        <div className="gantt-empty empty-state">
+          <p className="empty-state-title">{t('ganttNoTasksForAssignee')}</p>
+          <button type="button" className="btn-secondary" onClick={() => setFilterAssignee('all')}>{t('ganttShowAll')}</button>
+        </div>
+      )}
+
       {/* Основная таблица */}
+      {tasksWithDates.length > 0 && (
       <div className="gantt-chart">
         <div className="gantt-layout">
 
           {/* Фиксированная колонка с названиями */}
           <div className="gantt-sidebar-col">
-            <div className="gantt-sidebar-header">Задача</div>
+            <div className="gantt-sidebar-header">{t('ganttTaskColumn')}</div>
             {tasksWithDates.length === 0 ? null : tasksWithDates.map(task => (
-              <div key={task.id} className="gantt-sidebar">
+              <div key={task.id} className="gantt-sidebar" onClick={() => onTaskClick(task)}>
                 <div className="gantt-task-info">
                   <div className="gantt-task-title">{task.title}</div>
                   {task.assignees && task.assignees.length > 0 && (
                     <div className="gantt-task-assignees">
                       {task.assignees.map(a => (
-                        <span key={a.id} className="gantt-assignee-badge" title={a.name}>
-                          {a.name.charAt(0)}
-                        </span>
+                        <Avatar key={a.id} name={a.name} size="xs" className="gantt-assignee-badge" title={a.name} />
                       ))}
                     </div>
                   )}
@@ -168,14 +250,17 @@ function GanttChart({ tasks, onTaskClick, members }) {
                 const mEndPx = Math.min(totalWidth, dateToPx(mEnd) + DAY_PX);
                 return (
                   <div key={i} className="gantt-month-header" style={{ left: mLeftPx, width: mEndPx - mLeftPx }}>
-                    {format(monthStart, 'LLLL yyyy', { locale: ru })}
+                    {format(monthStart, 'LLLL yyyy', { locale: dateLocale })}
                   </div>
                 );
               })}
+              {todayPx >= 0 && todayPx <= totalWidth && (
+                <span className="gantt-today-marker" style={{ left: todayPx }} aria-hidden="true" />
+              )}
             </div>
 
             {/* Тело: строки + SVG стрелки */}
-            <div className="gantt-body" style={{ width: totalWidth, height: bodyHeight, position: 'relative' }}>
+            <div className="gantt-body" style={{ width: totalWidth, height: bodyHeight }}>
 
               {/* Фоновые строки */}
               {tasksWithDates.map((task, i) => (
@@ -195,12 +280,10 @@ function GanttChart({ tasks, onTaskClick, members }) {
               )}
 
               {/* SVG стрелки связей */}
-              <svg
-                style={{ position: 'absolute', top: 0, left: 0, width: totalWidth, height: bodyHeight, pointerEvents: 'none', overflow: 'visible' }}
-              >
+              <svg className="gantt-arrows" width={totalWidth} height={bodyHeight} aria-hidden="true">
                 <defs>
                   <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-                    <path d="M 0 0 L 6 3 L 0 6 z" fill="#aaa" />
+                    <path className="gantt-arrow-head" d="M 0 0 L 6 3 L 0 6 z" />
                   </marker>
                 </defs>
                 {renderArrows()}
@@ -209,19 +292,23 @@ function GanttChart({ tasks, onTaskClick, members }) {
               {/* Полосы задач */}
               {tasksWithDates.map((task, i) => {
                 const bar = getTaskBar(task);
+                const state = getTaskState(task);
                 return (
                   <div
                     key={task.id}
-                    className="gantt-task-bar"
+                    className={`gantt-task-bar gantt-bar-${state}`}
                     style={{
                       left: bar.left,
                       width: bar.width,
-                      top: i * ROW_H + 6,
-                      background: getTaskColor(task)
+                      top: i * ROW_H + 6
                     }}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => onTaskClick(task)}
-                    title={`${task.title}\n${format(new Date(task.start_date), 'dd.MM.yyyy')} – ${format(new Date(task.end_date), 'dd.MM.yyyy')}`}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onTaskClick(task); } }}
+                    title={`${task.title}\n${formatDate(task.start_date, lang)} – ${formatDate(task.end_date, lang)}`}
                   >
+                    {BAR_ICONS[state] && <Icon name={BAR_ICONS[state]} size={13} />}
                     <span className="gantt-task-bar-label">{task.title}</span>
                   </div>
                 );
@@ -230,6 +317,7 @@ function GanttChart({ tasks, onTaskClick, members }) {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

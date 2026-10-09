@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+// Общие стили идут раньше стилей компонентов, чтобы компонент мог их уточнять
+import './App.css';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
 import Register from './components/Register';
@@ -8,16 +10,14 @@ import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
 import ReportForm from './components/ReportForm';
 import VerifyEmail from './components/VerifyEmail';
-import './App.css';
+import { LanguageProvider } from './context/LanguageContext';
+import { FeedbackProvider } from './context/FeedbackContext';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) setUser(JSON.parse(storedUser));
-  }, []);
+  const [user, setUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('user')); } catch { return null; }
+  });
 
   const handleLogin = (userData, authToken) => {
     setUser(userData);
@@ -34,21 +34,24 @@ function App() {
   };
 
   return (
-    <Router>
-      <div className="app">
-        <Routes>
-          <Route path="/login" element={!token ? <Login onLogin={handleLogin} /> : <Navigate to="/" />} />
-          <Route path="/register" element={!token ? <Register /> : <Navigate to="/" />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password/:token" element={<ResetPassword />} />
-          <Route path="/verify-email/:token" element={<VerifyEmail onLogin={handleLogin} />} />
-          {/* Публичная страница отчёта (magic link) */}
-          <Route path="/report/:token" element={<ReportForm />} />
-          <Route path="/" element={token ? <Dashboard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />
-          <Route path="/project/:id" element={token ? <KanbanBoard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />
-        </Routes>
-      </div>
-    </Router>
+    <LanguageProvider>
+      <FeedbackProvider>
+      <Router>
+        <div className="app">
+          <Routes>
+            <Route path="/login" element={!token ? <Login onLogin={handleLogin} /> : <Navigate to="/" />} />
+            <Route path="/register" element={!token ? <Register /> : <Navigate to="/" />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password/:token" element={<ResetPassword />} />
+            <Route path="/verify-email/:token" element={<VerifyEmail onLogin={handleLogin} />} />
+            <Route path="/report/:token" element={<ReportForm />} />
+            <Route path="/" element={token ? <Dashboard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />
+            <Route path="/project/:id" element={token ? <KanbanBoard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />
+          </Routes>
+        </div>
+      </Router>
+      </FeedbackProvider>
+    </LanguageProvider>
   );
 }
 

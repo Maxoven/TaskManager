@@ -1,0 +1,193 @@
+/* Всплывающие уведомления и диалог подтверждения */
+
+/* Слева внизу: кнопки действий в окнах и на страницах — справа, уведомление их не закрывает */
+.toast-region {
+  position: fixed;
+  left: var(--space-5);
+  bottom: var(--space-5);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(400px, calc(100vw - 2 * var(--space-5)));
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-2) var(--space-3) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-snug);
+  animation: toast-in var(--dur-slow) var(--ease-out);
+}
+
+.toast-leaving {
+  animation: toast-out var(--dur) var(--ease-in) forwards;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+}
+
+@keyframes toast-out {
+  to { opacity: 0; transform: translateY(6px) scale(0.97); }
+}
+
+/* Тип уведомления — значок, а не только цвет */
+.toast-icon {
+  display: flex;
+  margin-top: 1px;
+  color: var(--status-info-fg);
+}
+
+.toast-success .toast-icon { color: var(--status-success-fg); }
+.toast-error .toast-icon { color: var(--status-danger-fg); }
+.toast-error { border-color: var(--status-danger-border); }
+
+.toast-text {
+  flex: 1;
+  min-width: 0;
+  padding-top: 1px;
+  overflow-wrap: anywhere;
+}
+
+.toast-close {
+  width: 28px;
+  min-height: 28px;
+  margin: -4px 0;
+  padding: 0;
+  flex-shrink: 0;
+  color: var(--color-text-faint);
+  border-radius: var(--radius-sm);
+}
+
+.toast-close:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+/* Диалог подтверждения — поверх обычных окон; небольшой и по центру на любом экране */
+.confirm-overlay {
+  z-index: var(--z-confirm);
+}
+
+.modal.confirm-dialog {
+  max-width: 440px;
+  padding-top: var(--modal-pad);
+}
+
+.confirm-dialog-body {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.confirm-dialog-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
+}
+
+.confirm-dialog-danger .confirm-dialog-icon {
+  background: var(--status-danger-bg);
+  color: var(--status-danger-fg);
+}
+
+.confirm-dialog-text {
+  flex: 1;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.confirm-dialog-title {
+  margin-bottom: var(--space-2);
+  line-height: var(--leading-snug);
+  overflow-wrap: anywhere;
+}
+
+.confirm-dialog-message {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  white-space: pre-line;
+}
+
+.confirm-dialog .modal-actions {
+  position: static;
+  border-top: 0;
+  margin-top: var(--space-5);
+  padding-bottom: var(--modal-pad);
+}
+
+@media (pointer: coarse) {
+  .toast-close {
+    width: 40px;
+    min-height: 40px;
+    margin: -10px -4px;
+  }
+}
+
+@media (max-width: 600px) {
+  /* На телефоне уведомления сверху: внизу — кнопки действий выезжающих окон */
+  .toast-region {
+    left: var(--space-3);
+    right: var(--space-3);
+    top: var(--space-3);
+    bottom: auto;
+    width: auto;
+    flex-direction: column-reverse;
+  }
+
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(-12px) scale(0.97); }
+  }
+
+  @keyframes toast-out {
+    to { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  }
+
+  /* Диалог подтверждения остаётся карточкой по центру, а не выезжающим окном */
+  .modal-overlay.confirm-overlay {
+    --modal-pad: var(--space-5);
+    align-items: center;
+    padding: var(--space-4);
+  }
+
+  .modal.confirm-dialog {
+    max-width: 440px;
+    max-height: calc(100dvh - 2 * var(--space-4));
+    border-width: 1px;
+    border-radius: var(--radius-xl);
+    animation: pop-in var(--dur-slow) var(--ease-out);
+  }
+
+  /* Длинные подписи кнопок («Закрыть без сохранения») — друг под другом, главное действие сверху */
+  .confirm-dialog .modal-actions-right {
+    flex-direction: column-reverse;
+  }
+
+  .confirm-dialog .modal-actions-right button {
+    flex: none;
+    width: 100%;
+    white-space: normal;
+  }
+
+  .modal-overlay.confirm-overlay.is-leaving .modal {
+    animation: pop-out var(--dur) var(--ease-in) forwards;
+  }
+}
