@@ -25,15 +25,26 @@ function AccountMenu({ user }) {
 
   useEffect(() => {
     if (!open) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') close(true); };
+    // Перехват на этапе погружения: Escape закрывает только меню, а не чат ассистента под ним
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      close(true);
+    };
     const onPointer = (e) => {
       if (rootRef.current && !rootRef.current.contains(e.target)) close();
     };
-    window.addEventListener('keydown', onKey);
+    // Фокус ушёл с клавиатуры за пределы меню — закрываем
+    const onFocus = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) close();
+    };
+    window.addEventListener('keydown', onKey, true);
     document.addEventListener('mousedown', onPointer);
+    document.addEventListener('focusin', onFocus);
     return () => {
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
       document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('focusin', onFocus);
     };
   }, [open, close]);
 
@@ -50,7 +61,7 @@ function AccountMenu({ user }) {
         className={`user-chip account-menu-trigger ${open ? 'is-open' : ''}`}
         onClick={() => setOpen(v => !v)}
         aria-expanded={open}
-        aria-controls="account-menu-panel"
+        aria-controls={open ? 'account-menu-panel' : undefined}
         aria-label={t('accountMenuLabel', { name: user.name })}
         title={user.email}
       >

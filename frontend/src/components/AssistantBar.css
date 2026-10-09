@@ -1,6 +1,8 @@
 /* ИИ-ассистент: строка ввода под шапкой. Раскрывается в окно чата
    в потоке страницы — содержимое ниже сдвигается, а не перекрывается. */
 .assistant-region {
+  /* width: 100% — на странице проекта родитель flex-колонка, без этого карточка сжимается к центру */
+  width: 100%;
   max-width: var(--content-width);
   margin: 0 auto;
   padding: var(--space-5) var(--space-6) 0;
@@ -219,6 +221,9 @@
   font: inherit;
   font-size: var(--text-sm);
   text-align: left;
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
 }
@@ -270,10 +275,22 @@
   flex: 1;
   min-width: 0;
   min-height: var(--control-height);
-  max-height: 140px;
-  padding: 9px var(--space-2);
+  max-height: 8.75rem; /* 140 */
+  padding: 0.5625rem var(--space-2);
   resize: none;
   overflow-y: auto;
+}
+
+/* Подсказка в пустом поле — в одну строку с многоточием, поле не растёт под неё */
+.assistant-form .assistant-input:placeholder-shown {
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.assistant-form .assistant-input::placeholder {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .assistant-history {
@@ -301,6 +318,17 @@
   color: var(--color-text-faint);
 }
 
+/* Сенсорные экраны: кнопки панели не меньше 44px */
+@media (pointer: coarse) {
+  .assistant-send,
+  .assistant-collapse,
+  .assistant-clear,
+  .assistant-history {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 @media (max-width: 900px) {
   .assistant-region {
     padding: var(--space-4) var(--page-gutter) 0;
@@ -309,8 +337,16 @@
 
 @media (max-width: 700px) {
   .assistant-head-hint,
-  .assistant-clear-text {
+  .assistant-clear-text,
+  .assistant-history-text {
     display: none;
+  }
+
+  /* «Открыть переписку» на телефоне — только значок, чтобы поле ввода не сжималось */
+  .assistant-history {
+    width: 44px;
+    min-height: 44px;
+    padding: 0;
   }
 
   /* Без подсказки заголовок занимает свободное место, кнопки — справа */

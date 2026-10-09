@@ -156,7 +156,7 @@
 
 /* Закреплённая колонка названий */
 .gantt-sidebar-col {
-  width: 240px;
+  width: 15rem; /* 240 — шире вместе с размером интерфейса */
   flex-shrink: 0;
   border-right: 1px solid var(--color-border-strong);
   background: var(--color-surface);

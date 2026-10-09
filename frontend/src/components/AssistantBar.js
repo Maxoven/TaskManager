@@ -7,7 +7,6 @@ import Icon from './Icon';
 import './AssistantBar.css';
 
 const MAX_LENGTH = 2000;
-const MAX_INPUT_HEIGHT = 140;
 const SUGGESTION_KEYS = ['assistantSuggestOverdue', 'assistantSuggestWeek', 'assistantSuggestReports', 'assistantSuggestFiles'];
 
 // ИИ-ассистент: строка ввода с кнопкой «Отправить» под шапкой. Как только
@@ -41,7 +40,11 @@ function AssistantBar({ wide = false }) {
     return () => { cancelled = true; };
   }, []);
 
-  const close = useCallback(() => setOpen(false), []);
+  // Кнопки чата исчезают при сворачивании — фокус переводим в строку ввода
+  const close = useCallback(() => {
+    setOpen(false);
+    inputRef.current?.focus();
+  }, []);
 
   // Escape сворачивает чат обратно в строку ввода
   useEffect(() => {
@@ -56,13 +59,33 @@ function AssistantBar({ wide = false }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [open, close]);
 
-  // Поле растёт вместе с текстом (до MAX_INPUT_HEIGHT), дальше — прокрутка внутри
-  useLayoutEffect(() => {
+  // Поле растёт вместе с текстом (до max-height), дальше — прокрутка внутри
+  const fitInput = useCallback(() => {
     const el = inputRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`;
-  }, [draft, open, enabled]);
+    // Пустое поле — высота по CSS: перенос подсказки не должен растягивать строку
+    if (!el.value) return;
+    // Предел берём из CSS (max-height в rem) — растёт вместе с размером интерфейса
+    const max = parseFloat(getComputedStyle(el).maxHeight) || Infinity;
+    el.style.height = `${Math.min(el.scrollHeight, max)}px`;
+  }, []);
+
+  useLayoutEffect(fitInput, [draft, open, enabled, fitInput]);
+
+  // Ширина поля меняется (окно, размер интерфейса) — пересчитываем высоту
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    let lastWidth = el.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth === lastWidth) return; // своё изменение высоты — не реагируем
+      lastWidth = el.clientWidth;
+      fitInput();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [enabled, fitInput]);
 
   // Чат раскрылся — строка ввода сместилась вниз; держим её в поле зрения
   useEffect(() => {
@@ -131,6 +154,8 @@ function AssistantBar({ wide = false }) {
       await clearAssistant();
       setMessages([]);
       setError('');
+      // Кнопка «Очистить» пропала вместе с сообщениями; диалог вернул фокус на неё — переводим в поле
+      setTimeout(() => inputRef.current?.focus(), 0);
     } catch (e) {
       notify.error(apiError(e, t, 'assistantError'));
     }
@@ -236,9 +261,11 @@ function AssistantBar({ wide = false }) {
               className="btn-ghost assistant-history"
               onClick={openChat}
               aria-expanded="false"
-              aria-controls="assistant-messages"
+              aria-label={t('assistantShowChat')}
+              title={t('assistantShowChat')}
             >
-              {t('assistantShowChat')}
+              <Icon name="history" size={18} />
+              <span className="assistant-history-text">{t('assistantShowChat')}</span>
             </button>
           )}
           <button type="submit" className="btn-primary assistant-send" disabled={!draft.trim() || !!pending} aria-label={t('assistantSend')} title={t('assistantSend')}>
