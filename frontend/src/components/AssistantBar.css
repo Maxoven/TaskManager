@@ -284,6 +284,19 @@
     max-width: 94%;
   }
 
+  /* На телефоне нет Shift+Enter — подсказку про клавиши не показываем */
+  .assistant-keys-hint {
+    display: none;
+  }
+
+  .assistant-footer {
+    flex-shrink: 0;
+  }
+
+  .assistant-form {
+    flex-shrink: 0;
+  }
+
   .assistant-send {
     width: 44px;
     min-height: 44px;

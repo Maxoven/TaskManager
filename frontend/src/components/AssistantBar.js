@@ -197,7 +197,9 @@ function AssistantBar() {
           </form>
 
           <div className="assistant-footer">
-            <span className="assistant-note">{t('assistantNote', { limit })}</span>
+            <span className="assistant-note">
+              {t('assistantNote', { limit })} <span className="assistant-keys-hint">{t('assistantKeysHint')}</span>
+            </span>
             {messages.length > 0 && (
               <button type="button" className="assistant-clear" onClick={handleClear} disabled={!!pending}>
                 {t('assistantClear')}
