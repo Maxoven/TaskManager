@@ -1,18 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { verifyEmail } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
-import { Logo } from './AppHeader';
-import './Auth.css';
+import AuthLayout, { AuthStatus } from './AuthLayout';
+import apiError from '../utils/apiError';
 
 function VerifyEmail({ onLogin }) {
-  const { t, lang, toggleLang } = useLanguage();
+  const { t } = useLanguage();
   const { token } = useParams();
   const navigate = useNavigate();
   const [status, setStatus] = useState('loading');
   const [message, setMessage] = useState('');
 
+  // Ссылка одноразовая: повторный запрос (StrictMode в dev) получил бы «ссылка недействительна»
+  const requested = useRef(false);
+
   useEffect(() => {
+    if (requested.current) return;
+    requested.current = true;
     const verify = async () => {
       try {
         const response = await verifyEmail(token);
@@ -22,21 +27,29 @@ function VerifyEmail({ onLogin }) {
         }
       } catch (err) {
         setStatus('error');
-        setMessage(err.response?.data?.error || t('verifyErrorTitle'));
+        setMessage(apiError(err, t, 'verifyErrorTitle'));
       }
     };
     verify();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   return (
-    <div className="auth-container">
-      <div className="auth-box" style={{ textAlign: 'center' }}>
-        <div className="auth-lang-toggle"><Logo size={28} /><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>
-        {status === 'loading' && (<><div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div><h2>{t('verifyLoading')}</h2></>)}
-        {status === 'success' && (<><div style={{ fontSize: 48, marginBottom: 16 }}>✅</div><h2>{t('verifySuccess')}</h2><p style={{ color: '#555' }}>{t('verifySuccessText')}</p></>)}
-        {status === 'error' && (<><div style={{ fontSize: 48, marginBottom: 16 }}>❌</div><h2>{t('verifyErrorTitle')}</h2><p style={{ color: '#888' }}>{message}</p><p style={{ marginTop: 16, fontSize: 13 }}><Link to="/login">{t('verifyBackToLogin')}</Link></p></>)}
-      </div>
-    </div>
+    <AuthLayout>
+      {status === 'loading' && <AuthStatus kind="loading" title={t('verifyLoading')} />}
+      {status === 'success' && (
+        <AuthStatus kind="success" title={t('verifySuccess')}>
+          <p className="auth-status-text">{t('verifySuccessText')}</p>
+        </AuthStatus>
+      )}
+      {status === 'error' && (
+        <AuthStatus kind="error" title={t('verifyErrorTitle')}>
+          <p className="auth-status-text">{message}</p>
+          <p className="auth-status-hint">{t('verifyErrorHint')}</p>
+          <Link to="/login" className="btn-primary auth-status-action">{t('verifyGoToLogin')}</Link>
+        </AuthStatus>
+      )}
+    </AuthLayout>
   );
 }
 

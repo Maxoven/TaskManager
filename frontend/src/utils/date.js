@@ -32,6 +32,11 @@ export function daysUntil(value) {
   return Math.round((date - today) / (1000 * 60 * 60 * 24));
 }
 
+// Как показывать состояние срока: значок и вид метки (.chip). Цвет — дополнительный признак,
+// основной — значок и слово, поэтому одно и то же на главной, доске и в списке задач.
+export const DEADLINE_CHIP = { overdue: 'chip-danger', 'due-soon': 'chip-warning' };
+export const DEADLINE_ICON = { overdue: 'alert', 'due-soon': 'clock' };
+
 // 'overdue' | 'due-soon' | ''
 export function deadlineState(task) {
   if (!task.end_date || task.is_done) return '';

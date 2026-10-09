@@ -8,10 +8,14 @@ const messages = {
     serverError: 'Внутренняя ошибка сервера',
     apiRunning: 'Task Manager API работает!',
     notFound: 'Не найдено',
+    tooManyRequests: 'Слишком много попыток. Подождите немного и попробуйте снова.',
+    invalidJson: 'Некорректный запрос',
 
     // Auth
     passwordTooShort: 'Пароль должен содержать минимум 8 символов',
-    userExists: 'Пользователь уже существует',
+    emailInvalid: 'Укажите корректный email',
+    nameRequired: 'Укажите имя',
+    userExists: 'Аккаунт с таким email уже есть. Войдите или восстановите пароль.',
     registerSuccess: 'Регистрация прошла успешно! Проверьте email для подтверждения аккаунта.',
     registerError: 'Ошибка регистрации',
     invalidCredentials: 'Неверный email или пароль',
@@ -32,6 +36,7 @@ const messages = {
 
     // Projects
     projectsFetchError: 'Ошибка получения проектов',
+    projectNameRequired: 'Укажите название проекта',
     projectCreateError: 'Ошибка создания проекта',
     onlyOwnerEdit: 'Только владелец может редактировать проект',
     projectUpdateError: 'Ошибка обновления проекта',
@@ -47,8 +52,11 @@ const messages = {
     memberRemovedFromProject: 'Участник удалён из проекта',
     memberRemoveError: 'Ошибка удаления участника',
     onlyOwnerInvite: 'Только владелец может приглашать',
-    userNotFound: 'Пользователь не найден',
-    userAlreadyInvited: 'Пользователь уже приглашён',
+    userNotFound: 'Человек с таким email ещё не зарегистрирован в Task Manager. Попросите его создать аккаунт, а потом пригласите снова.',
+    userAlreadyInvited: 'Этот человек уже в проекте или приглашение ему уже отправлено',
+    ownerCannotLeave: 'Владелец не может выйти из своего проекта',
+    leftProject: 'Вы вышли из проекта',
+    leaveError: 'Не удалось выйти. Попробуйте ещё раз.',
     cannotInviteSelf: 'Нельзя пригласить самого себя',
     invitationSent: 'Приглашение отправлено',
     invitationSendError: 'Ошибка отправки приглашения',
@@ -57,18 +65,23 @@ const messages = {
     invitationAccepted: 'Приглашение принято',
     invitationRejected: 'Приглашение отклонено',
     invitationProcessError: 'Ошибка обработки приглашения',
-    defaultStatuses: ['Бэклог', 'В работе', 'Готово'],
+    defaultStatuses: ['Нужно сделать', 'В работе', 'Готово'],
 
     // Team
     teamFetchError: 'Ошибка получения команды',
     cannotAddSelf: 'Нельзя добавить себя в команду',
-    userWithEmailNotFound: 'Пользователь с таким email не найден',
+    userWithEmailNotFound: 'Человек с таким email ещё не зарегистрирован в Task Manager. Попросите его создать аккаунт, а потом пригласите снова.',
+    notInTeam: 'Вы не состоите в этой команде',
+    leftTeam: 'Вы вышли из команды',
     teamInvitePending: 'Приглашение уже отправлено, ожидает подтверждения',
     alreadyInTeam: 'Этот пользователь уже в вашей команде',
     memberRemovedFromTeam: 'Участник удалён из команды',
 
     // Tasks
     tasksFetchError: 'Ошибка получения задач',
+    taskTitleRequired: 'Укажите название задачи',
+    statusInvalid: 'Колонка не относится к этому проекту',
+    datesInvalid: 'Дата окончания не может быть раньше даты начала',
     taskCreateError: 'Ошибка создания задачи',
     taskUpdateError: 'Ошибка обновления задачи',
     taskDeleted: 'Задача удалена',
@@ -89,7 +102,15 @@ const messages = {
     fileMissingOnServer: 'Файл не найден на сервере',
     fileDownloadError: 'Ошибка скачивания файла',
     fileDeleted: 'Файл удалён',
-    fileDeleteError: 'Ошибка удаления файла'
+    fileDeleteError: 'Ошибка удаления файла',
+
+    // ИИ-ассистент
+    assistantDisabled: 'Ассистент не настроен на сервере',
+    assistantEmpty: 'Напишите вопрос',
+    assistantTooLong: 'Сообщение слишком длинное — сократите до 2000 символов',
+    assistantUnavailable: 'Ассистент сейчас не отвечает. Попробуйте ещё раз чуть позже.',
+    assistantHistoryError: 'Не удалось загрузить переписку',
+    assistantCleared: 'Переписка очищена'
   },
 
   en: {
@@ -98,10 +119,14 @@ const messages = {
     serverError: 'Internal server error',
     apiRunning: 'Task Manager API is running!',
     notFound: 'Not found',
+    tooManyRequests: 'Too many attempts. Please wait a moment and try again.',
+    invalidJson: 'Malformed request',
 
     // Auth
     passwordTooShort: 'Password must be at least 8 characters',
-    userExists: 'User already exists',
+    emailInvalid: 'Enter a valid email',
+    nameRequired: 'Enter your name',
+    userExists: 'An account with this email already exists. Sign in or reset your password.',
     registerSuccess: 'Registration successful! Check your email to confirm your account.',
     registerError: 'Registration error',
     invalidCredentials: 'Invalid email or password',
@@ -122,6 +147,7 @@ const messages = {
 
     // Projects
     projectsFetchError: 'Error loading projects',
+    projectNameRequired: 'Enter a project name',
     projectCreateError: 'Error creating project',
     onlyOwnerEdit: 'Only the owner can edit the project',
     projectUpdateError: 'Error updating project',
@@ -137,8 +163,11 @@ const messages = {
     memberRemovedFromProject: 'Member removed from project',
     memberRemoveError: 'Error removing member',
     onlyOwnerInvite: 'Only the owner can invite',
-    userNotFound: 'User not found',
-    userAlreadyInvited: 'User has already been invited',
+    userNotFound: 'Nobody with this email has a Task Manager account yet. Ask them to sign up, then invite them again.',
+    userAlreadyInvited: 'This person is already in the project or has already been invited',
+    ownerCannotLeave: 'The owner cannot leave their own project',
+    leftProject: 'You have left the project',
+    leaveError: 'Could not leave. Please try again.',
     cannotInviteSelf: 'You cannot invite yourself',
     invitationSent: 'Invitation sent',
     invitationSendError: 'Error sending invitation',
@@ -147,18 +176,23 @@ const messages = {
     invitationAccepted: 'Invitation accepted',
     invitationRejected: 'Invitation declined',
     invitationProcessError: 'Error processing invitation',
-    defaultStatuses: ['Backlog', 'In progress', 'Done'],
+    defaultStatuses: ['To do', 'In progress', 'Done'],
 
     // Team
     teamFetchError: 'Error loading team',
     cannotAddSelf: 'You cannot add yourself to the team',
-    userWithEmailNotFound: 'No user with this email was found',
+    userWithEmailNotFound: 'Nobody with this email has a Task Manager account yet. Ask them to sign up, then invite them again.',
+    notInTeam: 'You are not a member of this team',
+    leftTeam: 'You have left the team',
     teamInvitePending: 'Invitation already sent, awaiting confirmation',
     alreadyInTeam: 'This user is already in your team',
     memberRemovedFromTeam: 'Member removed from team',
 
     // Tasks
     tasksFetchError: 'Error loading tasks',
+    taskTitleRequired: 'Enter a task title',
+    statusInvalid: 'This column does not belong to the project',
+    datesInvalid: 'The end date cannot be earlier than the start date',
     taskCreateError: 'Error creating task',
     taskUpdateError: 'Error updating task',
     taskDeleted: 'Task deleted',
@@ -179,7 +213,15 @@ const messages = {
     fileMissingOnServer: 'File not found on the server',
     fileDownloadError: 'Error downloading file',
     fileDeleted: 'File deleted',
-    fileDeleteError: 'Error deleting file'
+    fileDeleteError: 'Error deleting file',
+
+    // AI assistant
+    assistantDisabled: 'The assistant is not configured on the server',
+    assistantEmpty: 'Type a question',
+    assistantTooLong: 'The message is too long — keep it under 2000 characters',
+    assistantUnavailable: 'The assistant is not responding right now. Please try again in a moment.',
+    assistantHistoryError: 'Could not load the conversation',
+    assistantCleared: 'Conversation cleared'
   }
 };
 

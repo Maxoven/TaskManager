@@ -3,25 +3,43 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const pool = require('../config/database');
+const { withTransaction } = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const { SUPPORTED } = require('../i18n/messages');
 const { sendPasswordReset, sendEmailVerification } = require('../services/email');
+const rateLimit = require('../middleware/rateLimit');
 
 const router = express.Router();
+
+// Вход/регистрация — защита от перебора; письма — от рассылки спама на чужой адрес
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
+const emailLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });
+
+// Email храним и ищем в нижнем регистре, иначе User@x.com и user@x.com — разные аккаунты
+const normalizeEmail = (value) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const publicUser = (user) => ({ id: user.id, email: user.email, name: user.name, language: user.language });
 
 // Регистрация
-router.post('/register', async (req, res) => {
+router.post('/register', authLimiter, async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { password } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
 
+    if (!name) {
+      return res.status(400).json({ error: req.t('nameRequired') });
+    }
+    if (!EMAIL_RE.test(email) || email.length > 255) {
+      return res.status(400).json({ error: req.t('emailInvalid') });
+    }
     // Минимум 8 символов
-    if (!password || password.length < 8) {
+    if (typeof password !== 'string' || password.length < 8) {
       return res.status(400).json({ error: req.t('passwordTooShort') });
     }
 
-    const { rows: existing } = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    const { rows: existing } = await pool.query('SELECT id FROM users WHERE LOWER(email) = $1', [email]);
     if (existing.length > 0) {
       return res.status(400).json({ error: req.t('userExists') });
     }
@@ -57,10 +75,14 @@ router.post('/register', async (req, res) => {
 });
 
 // Вход
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const { rows: users } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const { password } = req.body;
+    const email = normalizeEmail(req.body.email);
+    if (!email || typeof password !== 'string') {
+      return res.status(401).json({ error: req.t('invalidCredentials') });
+    }
+    const { rows: users } = await pool.query('SELECT * FROM users WHERE LOWER(email) = $1', [email]);
     if (users.length === 0) {
       return res.status(401).json({ error: req.t('invalidCredentials') });
     }
@@ -122,8 +144,10 @@ router.get('/verify-email/:token', async (req, res) => {
     }
 
     const vToken = tokens[0];
-    await pool.query('UPDATE users SET is_verified = TRUE WHERE id = $1', [vToken.user_id]);
-    await pool.query('UPDATE email_verification_tokens SET used = TRUE WHERE id = $1', [vToken.id]);
+    await withTransaction(async (client) => {
+      await client.query('UPDATE users SET is_verified = TRUE WHERE id = $1', [vToken.user_id]);
+      await client.query('UPDATE email_verification_tokens SET used = TRUE WHERE id = $1', [vToken.id]);
+    });
 
     // Сразу выдаём JWT чтобы пользователь попал в приложение
     const { rows: [user] } = await pool.query('SELECT * FROM users WHERE id = $1', [vToken.user_id]);
@@ -137,11 +161,11 @@ router.get('/verify-email/:token', async (req, res) => {
 });
 
 // Повторная отправка письма верификации
-router.post('/resend-verification', async (req, res) => {
+router.post('/resend-verification', emailLimiter, async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = normalizeEmail(req.body.email);
     const { rows: users } = await pool.query(
-      'SELECT * FROM users WHERE email = $1 AND is_verified = FALSE', [email]
+      'SELECT * FROM users WHERE LOWER(email) = $1 AND is_verified = FALSE', [email]
     );
     if (users.length === 0) {
       return res.json({ message: req.t('resendGeneric') });
@@ -169,10 +193,10 @@ router.post('/resend-verification', async (req, res) => {
 });
 
 // Запрос сброса пароля
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', emailLimiter, async (req, res) => {
   try {
-    const { email } = req.body;
-    const { rows: users } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const email = normalizeEmail(req.body.email);
+    const { rows: users } = await pool.query('SELECT * FROM users WHERE LOWER(email) = $1', [email]);
     if (users.length === 0) {
       return res.json({ message: req.t('forgotGeneric') });
     }
@@ -197,11 +221,11 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 // Установка нового пароля
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', authLimiter, async (req, res) => {
   try {
     const { token, password } = req.body;
 
-    if (!password || password.length < 8) {
+    if (typeof password !== 'string' || password.length < 8) {
       return res.status(400).json({ error: req.t('passwordTooShort') });
     }
 
@@ -215,8 +239,17 @@ router.post('/reset-password', async (req, res) => {
 
     const resetToken = tokens[0];
     const passwordHash = await bcrypt.hash(password, 10);
-    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, resetToken.user_id]);
-    await pool.query('UPDATE password_reset_tokens SET used = TRUE WHERE id = $1', [resetToken.id]);
+    await withTransaction(async (client) => {
+      // Ссылка из письма подтверждает владение почтой — заодно считаем email подтверждённым
+      await client.query(
+        'UPDATE users SET password_hash = $1, is_verified = TRUE WHERE id = $2',
+        [passwordHash, resetToken.user_id]
+      );
+      await client.query(
+        'UPDATE password_reset_tokens SET used = TRUE WHERE user_id = $1 AND used = FALSE',
+        [resetToken.user_id]
+      );
+    });
     res.json({ message: req.t('passwordChanged') });
   } catch (error) {
     console.error('Ошибка установки пароля:', error);

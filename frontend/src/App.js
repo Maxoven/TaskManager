@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+// Общие стили идут раньше стилей компонентов, чтобы компонент мог их уточнять
+import './App.css';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
 import Register from './components/Register';
@@ -9,7 +11,7 @@ import ResetPassword from './components/ResetPassword';
 import ReportForm from './components/ReportForm';
 import VerifyEmail from './components/VerifyEmail';
 import { LanguageProvider } from './context/LanguageContext';
-import './App.css';
+import { FeedbackProvider } from './context/FeedbackContext';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
@@ -33,6 +35,7 @@ function App() {
 
   return (
     <LanguageProvider>
+      <FeedbackProvider>
       <Router>
         <div className="app">
           <Routes>
@@ -47,6 +50,7 @@ function App() {
           </Routes>
         </div>
       </Router>
+      </FeedbackProvider>
     </LanguageProvider>
   );
 }

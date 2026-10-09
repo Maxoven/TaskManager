@@ -170,3 +170,16 @@ CREATE INDEX IF NOT EXISTS idx_task_attachments_task ON task_attachments(task_id
 CREATE INDEX IF NOT EXISTS idx_report_tokens_task_user ON report_tokens(task_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_email_verification_user ON email_verification_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id);
+-- Вход и приглашения ищут email без учёта регистра
+CREATE INDEX IF NOT EXISTS idx_users_email_lower ON users (LOWER(email));
+
+-- Переписка с ИИ-ассистентом. Сервер хранит последние 20 сообщений на пользователя
+-- (см. routes/assistant.js).
+CREATE TABLE IF NOT EXISTS ai_messages (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(10) NOT NULL CHECK (role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_ai_messages_user ON ai_messages(user_id, id);

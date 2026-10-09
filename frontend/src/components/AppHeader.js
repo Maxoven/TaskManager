@@ -1,14 +1,17 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage, LangToggle } from '../context/LanguageContext';
+import Avatar from './Avatar';
+import Icon from './Icon';
+import AssistantBar from './AssistantBar';
 import './AppHeader.css';
 
 // Логотип: зелёный квадрат с сегодняшним числом — как фавикон
-export function Logo({ size = 32, withText = true }) {
+export function Logo({ withText = true }) {
   const day = new Date().getDate();
   return (
     <span className="logo">
-      <span className="logo-mark" style={{ width: size, height: size, fontSize: size * 0.5 }}>{day}</span>
+      <span className="logo-mark">{day}</span>
       {withText && <span className="logo-text">Task Manager</span>}
     </span>
   );
@@ -28,13 +31,17 @@ function AppHeader({ user, onLogout, children, wide = false }) {
           <LangToggle />
           {user && (
             <span className="user-chip" title={user.email}>
-              <span className="user-chip-avatar">{(user.name || '?').charAt(0).toUpperCase()}</span>
+              <Avatar name={user.name} size="sm" className="user-chip-avatar" aria-hidden="true" />
               <span className="user-chip-name">{user.name}</span>
             </span>
           )}
-          <button onClick={onLogout} className="btn-ghost">{t('logout')}</button>
+          <button type="button" onClick={onLogout} className="btn-ghost btn-logout" title={t('logout')}>
+            <Icon name="logout" size={18} />
+            <span className="btn-logout-text">{t('logout')}</span>
+          </button>
         </div>
       </div>
+      {user && <AssistantBar />}
     </header>
   );
 }

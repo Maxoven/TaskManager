@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { forgotPassword } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
-import { Logo } from './AppHeader';
-import './Auth.css';
+import AuthLayout, { AuthStatus } from './AuthLayout';
+import apiError from '../utils/apiError';
+import Icon from './Icon';
 
 function ForgotPassword() {
-  const { t, lang, toggleLang } = useLanguage();
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -15,44 +16,38 @@ function ForgotPassword() {
   const handleSubmit = async (e) => {
     e.preventDefault(); setError(''); setLoading(true);
     try { await forgotPassword(email); setSent(true); }
-    catch (err) { setError(err.response?.data?.error || t('forgotError')); }
+    catch (err) { setError(apiError(err, t, 'forgotError')); }
     finally { setLoading(false); }
   };
 
   if (sent) {
     return (
-      <div className="auth-container">
-        <div className="auth-box">
-          <div className="auth-lang-toggle"><Logo size={28} /><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>
-          <div className="success-icon">✅</div>
-          <h2>{t('forgotSentTitle')}</h2>
-          <p>{t('forgotSentText')}</p>
-          <p style={{ color: '#888', fontSize: '14px' }}>{t('forgotSentHint')}</p>
-          <Link to="/login" className="btn-primary" style={{ display: 'block', textAlign: 'center', marginTop: '16px' }}>{t('forgotBackBtn')}</Link>
-        </div>
-      </div>
+      <AuthLayout>
+        <AuthStatus kind="mail" title={t('forgotSentTitle')}>
+          <p className="auth-status-text">{t('forgotSentText')}</p>
+          <p className="auth-status-hint">{t('forgotSentHint')}</p>
+          <Link to="/login" className="btn-primary auth-status-action">{t('forgotBackBtn')}</Link>
+        </AuthStatus>
+      </AuthLayout>
     );
   }
 
   return (
-    <div className="auth-container">
-      <div className="auth-box">
-        <div className="auth-lang-toggle"><Logo size={28} /><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>
-        <h1>{t('forgotTitle')}</h1>
-        <p style={{ color: '#666', marginBottom: '20px' }}>{t('forgotHint')}</p>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>{t('loginEmail')}</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="your@email.com" />
-          </div>
-          {error && <div className="error">{error}</div>}
-          <button type="submit" disabled={loading} className="btn-primary">
-            {loading ? t('forgotLoading') : t('forgotBtn')}
-          </button>
-        </form>
-        <p className="auth-link"><Link to="/login">{t('forgotBackToLogin')}</Link></p>
-      </div>
-    </div>
+    <AuthLayout>
+      <h1>{t('forgotTitle')}</h1>
+      <p className="auth-intro">{t('forgotHint')}</p>
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label htmlFor="forgot-email">{t('loginEmail')}</label>
+          <input id="forgot-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="name@example.com" autoComplete="email" autoFocus />
+        </div>
+        {error && <div className="error" role="alert">{error}</div>}
+        <button type="submit" disabled={loading} className="btn-primary">
+          {loading ? t('forgotLoading') : t('forgotBtn')}
+        </button>
+      </form>
+      <p className="auth-link"><Link to="/login"><Icon name="arrow-left" />{t('forgotBackToLogin')}</Link></p>
+    </AuthLayout>
   );
 }
 

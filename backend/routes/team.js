@@ -7,6 +7,13 @@ const { sendTeamInvitation } = require('../services/email');
 const router = express.Router();
 router.use(authMiddleware);
 
+const requireNumericParam = (req, res, next, value) => {
+  if (!/^\d{1,9}$/.test(value)) return res.status(404).json({ error: req.t('notFound') });
+  next();
+};
+router.param('ownerId', requireNumericParam);
+router.param('memberId', requireNumericParam);
+
 // Получить мою команду (все — и approved и pending)
 router.get('/', async (req, res) => {
   try {
@@ -39,6 +46,56 @@ router.get('/invitations', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: req.t('invitationsFetchError') });
+  }
+});
+
+// Команды, в которых я состою (я — участник, владелец — кто-то другой)
+router.get('/memberships', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT tm.owner_id, u.name AS owner_name, u.email AS owner_email, tm.invited_at,
+        (SELECT COUNT(*)::int FROM projects p WHERE p.owner_id = tm.owner_id) AS projects_count
+      FROM team_members tm
+      JOIN users u ON tm.owner_id = u.id
+      WHERE tm.member_id = $1 AND tm.status = 'approved'
+      ORDER BY u.name
+    `, [req.userId]);
+    res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: req.t('teamFetchError') });
+  }
+});
+
+// Выйти из чужой команды: теряю доступ ко всем проектам её владельца
+router.delete('/memberships/:ownerId', async (req, res) => {
+  try {
+    const { ownerId } = req.params;
+    const left = await withTransaction(async (client) => {
+      const { rowCount } = await client.query(
+        `DELETE FROM team_members WHERE owner_id = $1 AND member_id = $2 AND status = 'approved'`,
+        [ownerId, req.userId]
+      );
+      if (rowCount === 0) return false;
+      await client.query(`
+        DELETE FROM project_members
+        WHERE user_id = $2 AND project_id IN (SELECT id FROM projects WHERE owner_id = $1)
+      `, [ownerId, req.userId]);
+      await client.query(`
+        DELETE FROM task_assignees
+        WHERE user_id = $2 AND task_id IN (
+          SELECT t.id FROM tasks t JOIN projects p ON p.id = t.project_id WHERE p.owner_id = $1
+        )
+      `, [ownerId, req.userId]);
+      return true;
+    });
+    if (!left) {
+      return res.status(404).json({ error: req.t('notInTeam') });
+    }
+    res.json({ message: req.t('leftTeam') });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: req.t('leaveError') });
   }
 });
 
@@ -79,15 +136,15 @@ router.patch('/invitations/:ownerId/:action', async (req, res) => {
 // Пригласить участника в команду (создаём pending)
 router.post('/', async (req, res) => {
   try {
-    const { email } = req.body;
+    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
 
     const { rows: [owner] } = await pool.query('SELECT id, name, email FROM users WHERE id = $1', [req.userId]);
-    if (owner.email === email) {
+    if (owner.email.toLowerCase() === email) {
       return res.status(400).json({ error: req.t('cannotAddSelf') });
     }
 
     const { rows: users } = await pool.query(
-      'SELECT id, name, email, language FROM users WHERE email = $1', [email]
+      'SELECT id, name, email, language FROM users WHERE LOWER(email) = $1', [email]
     );
     if (users.length === 0) {
       return res.status(404).json({ error: req.t('userWithEmailNotFound') });
@@ -133,6 +190,13 @@ router.delete('/:memberId', async (req, res) => {
       await client.query(`
         DELETE FROM project_members
         WHERE user_id = $2 AND project_id IN (SELECT id FROM projects WHERE owner_id = $1)
+      `, [req.userId, memberId]);
+      // Снимаем с задач этих проектов — иначе бывший участник продолжит получать напоминания
+      await client.query(`
+        DELETE FROM task_assignees
+        WHERE user_id = $2 AND task_id IN (
+          SELECT t.id FROM tasks t JOIN projects p ON p.id = t.project_id WHERE p.owner_id = $1
+        )
       `, [req.userId, memberId]);
     });
     res.json({ message: req.t('memberRemovedFromTeam') });

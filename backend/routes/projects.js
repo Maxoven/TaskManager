@@ -1,4 +1,6 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const pool = require('../config/database');
 const { withTransaction } = require('../config/database');
 const authMiddleware = require('../middleware/auth');
@@ -6,6 +8,19 @@ const { sendProjectInvitation } = require('../services/email');
 
 const router = express.Router();
 router.use(authMiddleware);
+
+// Та же папка, что в routes/tasks.js
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../storage/uploads');
+
+// Нечисловой id в адресе — это 404, а не ошибка SQL «invalid input syntax for integer»
+const requireNumericParam = (req, res, next, value) => {
+  if (!/^\d{1,9}$/.test(value)) return res.status(404).json({ error: req.t('notFound') });
+  next();
+};
+router.param('id', requireNumericParam);
+router.param('userId', requireNumericParam);
+
+const cleanText = (value) => (typeof value === 'string' ? value.trim() : '');
 
 // Проверка доступа к проекту: владелец или подтверждённый участник
 const PROJECT_ACCESS_SQL = `
@@ -56,7 +71,11 @@ router.get('/', async (req, res) => {
 // Создать проект (вместе с колонками по умолчанию на языке пользователя)
 router.post('/', async (req, res) => {
   try {
-    const { name, description } = req.body;
+    const name = cleanText(req.body.name).slice(0, 255);
+    const description = cleanText(req.body.description) || null;
+    if (!name) {
+      return res.status(400).json({ error: req.t('projectNameRequired') });
+    }
     const statusNames = req.t('defaultStatuses');
 
     const project = await withTransaction(async (client) => {
@@ -93,7 +112,11 @@ router.post('/', async (req, res) => {
 router.patch('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description } = req.body;
+    const name = cleanText(req.body.name).slice(0, 255);
+    const description = cleanText(req.body.description) || null;
+    if (!name) {
+      return res.status(400).json({ error: req.t('projectNameRequired') });
+    }
 
     const { rows: updated } = await pool.query(
       'UPDATE projects SET name = $1, description = $2 WHERE id = $3 AND owner_id = $4 RETURNING *',
@@ -113,7 +136,7 @@ router.patch('/:id', async (req, res) => {
 router.post('/reorder', async (req, res) => {
   try {
     const { projectIds } = req.body; // массив id в новом порядке
-    if (!Array.isArray(projectIds)) {
+    if (!Array.isArray(projectIds) || !projectIds.every(Number.isInteger)) {
       return res.status(400).json({ error: req.t('projectIdsArray') });
     }
     await pool.query(`
@@ -132,12 +155,24 @@ router.post('/reorder', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    // Файлы задач каскадно удаляются из БД — запоминаем их, чтобы убрать и с диска
+    const { rows: attachments } = await pool.query(`
+      SELECT f.filename FROM task_attachments f
+      JOIN tasks t ON t.id = f.task_id
+      JOIN projects p ON p.id = t.project_id
+      WHERE p.id = $1 AND p.owner_id = $2
+    `, [id, req.userId]);
     const { rowCount } = await pool.query(
       'DELETE FROM projects WHERE id = $1 AND owner_id = $2', [id, req.userId]
     );
     if (rowCount === 0) {
       return res.status(403).json({ error: req.t('onlyOwnerDelete') });
     }
+    attachments.forEach(att => {
+      fs.unlink(path.join(UPLOADS_DIR, att.filename), (err) => {
+        if (err && err.code !== 'ENOENT') console.error('Не удалось удалить файл:', err.message);
+      });
+    });
     res.json({ message: req.t('projectDeleted') });
   } catch (error) {
     console.error(error);
@@ -222,6 +257,40 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// Выйти из чужого проекта (участник сам покидает проект)
+router.post('/:id/leave', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows: projects } = await pool.query('SELECT owner_id FROM projects WHERE id = $1', [id]);
+    // Тот же ответ, что и при отсутствии доступа, — не раскрываем существование чужих проектов
+    if (projects.length === 0) {
+      return res.status(403).json({ error: req.t('accessDenied') });
+    }
+    if (projects[0].owner_id === req.userId) {
+      return res.status(400).json({ error: req.t('ownerCannotLeave') });
+    }
+    const left = await withTransaction(async (client) => {
+      const { rowCount } = await client.query(
+        'DELETE FROM project_members WHERE project_id = $1 AND user_id = $2', [id, req.userId]
+      );
+      if (rowCount === 0) return false;
+      // Снимаем себя с задач проекта — иначе напоминания продолжат приходить
+      await client.query(`
+        DELETE FROM task_assignees
+        WHERE user_id = $2 AND task_id IN (SELECT id FROM tasks WHERE project_id = $1)
+      `, [id, req.userId]);
+      return true;
+    });
+    if (!left) {
+      return res.status(403).json({ error: req.t('accessDenied') });
+    }
+    res.json({ message: req.t('leftProject') });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: req.t('leaveError') });
+  }
+});
+
 // Удалить участника из проекта
 router.delete('/:id/members/:userId', async (req, res) => {
   try {
@@ -232,9 +301,16 @@ router.delete('/:id/members/:userId', async (req, res) => {
     if (projects.length === 0) {
       return res.status(403).json({ error: req.t('onlyOwnerRemoveMembers') });
     }
-    await pool.query(
-      'DELETE FROM project_members WHERE project_id = $1 AND user_id = $2', [id, userId]
-    );
+    await withTransaction(async (client) => {
+      await client.query(
+        'DELETE FROM project_members WHERE project_id = $1 AND user_id = $2', [id, userId]
+      );
+      // Снимаем с задач проекта — иначе бывший участник продолжит получать напоминания
+      await client.query(`
+        DELETE FROM task_assignees
+        WHERE user_id = $2 AND task_id IN (SELECT id FROM tasks WHERE project_id = $1)
+      `, [id, userId]);
+    });
     res.json({ message: req.t('memberRemovedFromProject') });
   } catch (error) {
     console.error(error);
@@ -246,7 +322,7 @@ router.delete('/:id/members/:userId', async (req, res) => {
 router.post('/:id/invite', async (req, res) => {
   try {
     const { id } = req.params;
-    const { email } = req.body;
+    const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
     const { rows: projects } = await pool.query(
       'SELECT * FROM projects WHERE id = $1 AND owner_id = $2', [id, req.userId]
     );
@@ -254,7 +330,7 @@ router.post('/:id/invite', async (req, res) => {
       return res.status(403).json({ error: req.t('onlyOwnerInvite') });
     }
     const { rows: users } = await pool.query(
-      'SELECT id, name, email, language FROM users WHERE email = $1', [email]
+      'SELECT id, name, email, language FROM users WHERE LOWER(email) = $1', [email]
     );
     if (users.length === 0) {
       return res.status(404).json({ error: req.t('userNotFound') });

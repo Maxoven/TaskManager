@@ -47,6 +47,7 @@ export const respondToInvitation = (projectId, action) =>
   api.patch(`/projects/${projectId}/invitation/${action}`);
 export const getPendingInvitations = () => api.get('/projects/invitations/pending');
 export const removeProjectMember = (projectId, userId) => api.delete(`/projects/${projectId}/members/${userId}`);
+export const leaveProject = (projectId) => api.post(`/projects/${projectId}/leave`);
 
 // Tasks
 export const createTask = (data) => api.post('/tasks', data);
@@ -73,12 +74,19 @@ export const downloadFile = (taskId, fileId) =>
   api.get(`/tasks/${taskId}/attachments/${fileId}/download`, { responseType: 'blob' });
 export const deleteFile = (taskId, fileId) => api.delete(`/tasks/${taskId}/attachments/${fileId}`);
 
+// ИИ-ассистент
+export const getAssistant = () => api.get('/assistant');
+export const sendAssistantMessage = (text) => api.post('/assistant/messages', { text }, { timeout: 180000 });
+export const clearAssistant = () => api.delete('/assistant/messages');
+
 // Team
 export const getTeam = () => api.get('/team');
 export const addTeamMember = (email) => api.post('/team', { email });
 export const removeTeamMember = (memberId) => api.delete(`/team/${memberId}`);
 export const getTeamInvitations = () => api.get('/team/invitations');
 export const respondToTeamInvitation = (ownerId, action) => api.patch(`/team/invitations/${ownerId}/${action}`);
+export const getTeamMemberships = () => api.get('/team/memberships');
+export const leaveTeam = (ownerId) => api.delete(`/team/memberships/${ownerId}`);
 
 // Email verification
 export const verifyEmail = (token) => api.get(`/auth/verify-email/${token}`);

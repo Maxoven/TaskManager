@@ -10,15 +10,26 @@ const { sendTaskAssigned } = require('../services/email');
 const router = express.Router();
 router.use(authMiddleware);
 
+const requireNumericParam = (req, res, next, value) => {
+  if (!/^\d{1,9}$/.test(value)) return res.status(404).json({ error: req.t('notFound') });
+  next();
+};
+router.param('id', requireNumericParam);
+router.param('taskId', requireNumericParam);
+router.param('fileId', requireNumericParam);
+
 // Файлы задач лежат вне папки, которую раздаёт nginx (/uploads/), —
 // скачать их можно только через API с проверкой доступа к проекту
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../storage/uploads');
 
 // Настройка multer
+const ALLOWED_EXT = new Set([
+  '.jpg', '.jpeg', '.png', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.zip', '.rar'
+]);
+
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-    cb(null, UPLOADS_DIR);
+    fs.mkdir(UPLOADS_DIR, { recursive: true }, (err) => cb(err, UPLOADS_DIR));
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -29,8 +40,10 @@ const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: function (req, file, cb) {
-    const allowed = /jpeg|jpg|png|pdf|doc|docx|xls|xlsx|txt|zip|rar/;
-    if (allowed.test(path.extname(file.originalname).toLowerCase()) || allowed.test(file.mimetype)) {
+    // multer отдаёт имя файла в latin1 — без перекодировки кириллица превращается в «Ð¾Ñ‚Ñ‡Ñ‘Ñ‚»
+    file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    // Проверяем именно расширение: MIME-тип присылает клиент, ему доверять нельзя
+    if (ALLOWED_EXT.has(path.extname(file.originalname).toLowerCase())) {
       return cb(null, true);
     }
     const err = new Error('Unsupported file format');
@@ -55,6 +68,13 @@ const TASK_FIELDS = `
     FROM task_dependencies d WHERE d.task_id = t.id
   ), '[]') AS dependencies
 `;
+
+// Удаление файла с диска — в фоне и без падения, если файла уже нет
+function removeUploadedFile(filename) {
+  fs.unlink(path.join(UPLOADS_DIR, filename), (err) => {
+    if (err && err.code !== 'ENOENT') console.error('Не удалось удалить файл:', err.message);
+  });
+}
 
 async function fetchTask(db, taskId) {
   const { rows } = await db.query(`SELECT ${TASK_FIELDS} FROM tasks t WHERE t.id = $1`, [taskId]);
@@ -84,25 +104,71 @@ async function requireTaskAccess(req, res, next) {
     if (!(await hasProjectAccess(rows[0].project_id, req.userId))) {
       return res.status(403).json({ error: req.t('accessDenied') });
     }
+    req.taskProjectId = rows[0].project_id;
     next();
   } catch (error) {
     next(error);
   }
 }
 
-async function saveDependencies(db, taskId, dependencies) {
-  const validDeps = (dependencies || []).filter(d => d.depends_on_task_id);
+const DEPENDENCY_TYPES = ['finish_to_start', 'start_to_start', 'finish_to_finish', 'start_to_finish'];
+
+const toIntArray = (value) =>
+  Array.isArray(value) ? [...new Set(value.map(Number).filter(Number.isInteger))] : [];
+
+// Связывать можно только задачи одного проекта (и не саму с собой)
+async function saveDependencies(db, taskId, projectId, dependencies) {
+  const validDeps = (Array.isArray(dependencies) ? dependencies : [])
+    .map(d => ({ id: Number(d?.depends_on_task_id), type: d?.dependency_type }))
+    .filter(d => Number.isInteger(d.id) && d.id !== Number(taskId));
   if (validDeps.length === 0) return;
   await db.query(`
     INSERT INTO task_dependencies (task_id, depends_on_task_id, dependency_type)
     SELECT $1, d.dep_id, d.dep_type
     FROM unnest($2::int[], $3::text[]) AS d(dep_id, dep_type)
+    JOIN tasks dt ON dt.id = d.dep_id AND dt.project_id = $4
     ON CONFLICT (task_id, depends_on_task_id) DO NOTHING
   `, [
     taskId,
-    validDeps.map(d => d.depends_on_task_id),
-    validDeps.map(d => d.dependency_type || 'finish_to_start')
+    validDeps.map(d => d.id),
+    validDeps.map(d => (DEPENDENCY_TYPES.includes(d.type) ? d.type : 'finish_to_start')),
+    projectId
   ]);
+}
+
+// Исполнителем может быть только владелец или подтверждённый участник проекта —
+// иначе через задачу можно узнать имя/email любого пользователя и слать ему письма
+async function saveAssignees(db, taskId, projectId, assigneeIds) {
+  const ids = toIntArray(assigneeIds);
+  if (ids.length === 0) return [];
+  const { rows } = await db.query(`
+    INSERT INTO task_assignees (task_id, user_id)
+    SELECT $1, u.id FROM users u
+    WHERE u.id = ANY($2::int[]) AND (
+      u.id = (SELECT owner_id FROM projects WHERE id = $3) OR EXISTS (
+        SELECT 1 FROM project_members pm
+        WHERE pm.project_id = $3 AND pm.user_id = u.id AND pm.status = 'approved'
+      )
+    )
+    ON CONFLICT DO NOTHING
+    RETURNING user_id
+  `, [taskId, ids, projectId]);
+  return rows.map(r => r.user_id);
+}
+
+async function statusBelongsToProject(statusId, projectId) {
+  const { rows } = await pool.query(
+    'SELECT 1 FROM statuses WHERE id = $1 AND project_id = $2', [statusId, projectId]
+  );
+  return rows.length > 0;
+}
+
+const datesInvalid = (start, end) => !!start && !!end && String(end) < String(start);
+
+// Письма уходят в фоне: SMTP не должен задерживать ответ на сохранение задачи
+function notifyAssigneesInBackground(userIds, taskTitle, projectId) {
+  notifyAssignees(userIds, taskTitle, projectId)
+    .catch(e => console.error('Ошибка отправки уведомлений:', e.message));
 }
 
 async function notifyAssignees(userIds, taskTitle, projectId) {
@@ -147,30 +213,36 @@ router.get('/my', async (req, res) => {
 // ─── Создать задачу ─────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
   try {
-    const { projectId, statusId, title, description, startDate, endDate, assigneeIds, dependencies } = req.body;
+    const { statusId, description, startDate, endDate, assigneeIds, dependencies } = req.body;
+    const projectId = Number(req.body.projectId);
+    const title = typeof req.body.title === 'string' ? req.body.title.trim().slice(0, 255) : '';
 
-    if (!(await hasProjectAccess(projectId, req.userId))) {
+    if (!Number.isInteger(projectId) || !(await hasProjectAccess(projectId, req.userId))) {
       return res.status(403).json({ error: req.t('accessDenied') });
     }
+    if (!title) {
+      return res.status(400).json({ error: req.t('taskTitleRequired') });
+    }
+    if (!Number.isInteger(Number(statusId)) || !(await statusBelongsToProject(statusId, projectId))) {
+      return res.status(400).json({ error: req.t('statusInvalid') });
+    }
+    if (datesInvalid(startDate, endDate)) {
+      return res.status(400).json({ error: req.t('datesInvalid') });
+    }
 
-    const taskId = await withTransaction(async (client) => {
+    const { taskId, assigned } = await withTransaction(async (client) => {
       const { rows: [created] } = await client.query(
         `INSERT INTO tasks (project_id, status_id, title, description, start_date, end_date)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-        [projectId, statusId, title, description, startDate || null, endDate || null]
+        [projectId, statusId, title, description || null, startDate || null, endDate || null]
       );
-      if (assigneeIds && assigneeIds.length > 0) {
-        await client.query(
-          'INSERT INTO task_assignees (task_id, user_id) SELECT $1, unnest($2::int[]) ON CONFLICT DO NOTHING',
-          [created.id, assigneeIds]
-        );
-      }
-      await saveDependencies(client, created.id, dependencies);
-      return created.id;
+      const added = await saveAssignees(client, created.id, projectId, assigneeIds);
+      await saveDependencies(client, created.id, projectId, dependencies);
+      return { taskId: created.id, assigned: added };
     });
 
     // Email уведомления о новой задаче
-    await notifyAssignees(assigneeIds, title, projectId);
+    notifyAssigneesInBackground(assigned, title, projectId);
 
     res.status(201).json(await fetchTask(pool, taskId));
   } catch (error) {
@@ -183,7 +255,20 @@ router.post('/', async (req, res) => {
 router.patch('/:id', requireTaskAccess, async (req, res) => {
   try {
     const { id } = req.params;
-    const { statusId, title, description, startDate, endDate, assigneeIds, dependencies } = req.body;
+    const { statusId, description, startDate, endDate, assigneeIds, dependencies } = req.body;
+    const projectId = req.taskProjectId;
+    const title = typeof req.body.title === 'string' ? req.body.title.trim().slice(0, 255) : req.body.title;
+
+    if (title !== undefined && !title) {
+      return res.status(400).json({ error: req.t('taskTitleRequired') });
+    }
+    if (statusId !== undefined &&
+        (!Number.isInteger(Number(statusId)) || !(await statusBelongsToProject(statusId, projectId)))) {
+      return res.status(400).json({ error: req.t('statusInvalid') });
+    }
+    if (startDate !== undefined && endDate !== undefined && datesInvalid(startDate, endDate)) {
+      return res.status(400).json({ error: req.t('datesInvalid') });
+    }
 
     const addedIds = await withTransaction(async (client) => {
       const updates = [];
@@ -207,20 +292,15 @@ router.patch('/:id', requireTaskAccess, async (req, res) => {
           'SELECT user_id FROM task_assignees WHERE task_id = $1', [id]
         );
         const oldIds = oldAssignees.map(a => a.user_id);
-        added = assigneeIds.filter(uid => !oldIds.includes(uid));
 
         await client.query('DELETE FROM task_assignees WHERE task_id = $1', [id]);
-        if (assigneeIds.length > 0) {
-          await client.query(
-            'INSERT INTO task_assignees (task_id, user_id) SELECT $1, unnest($2::int[]) ON CONFLICT DO NOTHING',
-            [id, assigneeIds]
-          );
-        }
+        const saved = await saveAssignees(client, id, projectId, assigneeIds);
+        added = saved.filter(uid => !oldIds.includes(uid));
       }
 
       if (dependencies !== undefined) {
         await client.query('DELETE FROM task_dependencies WHERE task_id = $1', [id]);
-        await saveDependencies(client, id, dependencies);
+        await saveDependencies(client, id, projectId, dependencies);
       }
       return added;
     });
@@ -228,7 +308,7 @@ router.patch('/:id', requireTaskAccess, async (req, res) => {
     const task = await fetchTask(pool, id);
 
     // Уведомляем только новых исполнителей
-    await notifyAssignees(addedIds, task.title, task.project_id);
+    notifyAssigneesInBackground(addedIds, task.title, task.project_id);
 
     res.json(task);
   } catch (error) {
@@ -244,11 +324,9 @@ router.delete('/:id', requireTaskAccess, async (req, res) => {
     const { rows: attachments } = await pool.query(
       'SELECT filename FROM task_attachments WHERE task_id = $1', [id]
     );
-    attachments.forEach(att => {
-      const filePath = path.join(UPLOADS_DIR, att.filename);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    });
+    // Сначала запись в БД, потом файлы: при сбое БД вложения не пропадут с диска
     await pool.query('DELETE FROM tasks WHERE id = $1', [id]);
+    attachments.forEach(att => removeUploadedFile(att.filename));
     res.json({ message: req.t('taskDeleted') });
   } catch (error) {
     console.error(error);
@@ -341,9 +419,8 @@ router.delete('/:taskId/attachments/:fileId', requireTaskAccess, async (req, res
       'SELECT * FROM task_attachments WHERE id = $1 AND task_id = $2', [fileId, taskId]
     );
     if (files.length === 0) return res.status(404).json({ error: req.t('fileNotFound') });
-    const filePath = path.join(UPLOADS_DIR, files[0].filename);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     await pool.query('DELETE FROM task_attachments WHERE id = $1', [fileId]);
+    removeUploadedFile(files[0].filename);
     res.json({ message: req.t('fileDeleted') });
   } catch (error) {
     console.error(error);

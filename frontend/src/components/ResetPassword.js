@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { checkResetToken, resetPassword } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
-import { Logo } from './AppHeader';
-import './Auth.css';
+import AuthLayout, { AuthStatus, PasswordField } from './AuthLayout';
+import apiError from '../utils/apiError';
 
 function ResetPassword() {
-  const { t, lang, toggleLang } = useLanguage();
+  const { t } = useLanguage();
   const { token } = useParams();
   const navigate = useNavigate();
   const [valid, setValid] = useState(null);
@@ -20,58 +20,58 @@ function ResetPassword() {
     checkResetToken(token).then(() => setValid(true)).catch(() => setValid(false));
   }, [token]);
 
+  useEffect(() => {
+    if (!done) return undefined;
+    const timer = setTimeout(() => navigate('/login'), 3000);
+    return () => clearTimeout(timer);
+  }, [done, navigate]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (password !== confirm) { setError(t('resetMismatch')); return; }
     if (password.length < 8) { setError(t('resetShort')); return; }
+    if (password !== confirm) { setError(t('resetMismatch')); return; }
     setError(''); setLoading(true);
-    try { await resetPassword(token, password); setDone(true); setTimeout(() => navigate('/login'), 3000); }
-    catch (err) { setError(err.response?.data?.error || t('resetError')); }
+    try { await resetPassword(token, password); setDone(true); }
+    catch (err) { setError(apiError(err, t, 'resetError')); }
     finally { setLoading(false); }
   };
 
-  const LangBtn = () => <div className="auth-lang-toggle"><Logo size={28} /><button onClick={toggleLang} className="lang-btn">{lang === 'ru' ? 'EN' : 'RU'}</button></div>;
-
-  if (valid === null) return <div className="auth-container"><div className="auth-box"><LangBtn /><p>{t('resetChecking')}</p></div></div>;
-  if (!valid) return (
-    <div className="auth-container"><div className="auth-box">
-      <LangBtn />
-      <div style={{ fontSize: '48px', textAlign: 'center' }}>❌</div>
-      <h2>{t('resetInvalidTitle')}</h2>
-      <p>{t('resetInvalidText')}</p>
-      <Link to="/forgot-password" className="btn-primary" style={{ display: 'block', textAlign: 'center', marginTop: '16px' }}>{t('resetInvalidBtn')}</Link>
-    </div></div>
-  );
-  if (done) return (
-    <div className="auth-container"><div className="auth-box">
-      <LangBtn />
-      <div className="success-icon">✅</div>
-      <h2>{t('resetDoneTitle')}</h2>
-      <p>{t('resetDoneText')}</p>
-    </div></div>
-  );
+  if (valid === null) {
+    return <AuthLayout><AuthStatus kind="loading" title={t('resetChecking')} /></AuthLayout>;
+  }
+  if (!valid) {
+    return (
+      <AuthLayout>
+        <AuthStatus kind="error" title={t('resetInvalidTitle')}>
+          <p className="auth-status-text">{t('resetInvalidText')}</p>
+          <Link to="/forgot-password" className="btn-primary auth-status-action">{t('resetInvalidBtn')}</Link>
+        </AuthStatus>
+      </AuthLayout>
+    );
+  }
+  if (done) {
+    return (
+      <AuthLayout>
+        <AuthStatus kind="success" title={t('resetDoneTitle')}>
+          <p className="auth-status-text">{t('resetDoneText')}</p>
+          <Link to="/login" className="btn-primary auth-status-action">{t('resetDoneBtn')}</Link>
+        </AuthStatus>
+      </AuthLayout>
+    );
+  }
 
   return (
-    <div className="auth-container">
-      <div className="auth-box">
-        <LangBtn />
-        <h1>{t('resetTitle')}</h1>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>{t('resetNewPassword')}</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder={t('resetNewPasswordPlaceholder')} minLength={8} />
-          </div>
-          <div className="form-group">
-            <label>{t('resetConfirm')}</label>
-            <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required placeholder={t('resetConfirmPlaceholder')} />
-          </div>
-          {error && <div className="error">{error}</div>}
-          <button type="submit" disabled={loading} className="btn-primary">
-            {loading ? t('resetLoading') : t('resetBtn')}
-          </button>
-        </form>
-      </div>
-    </div>
+    <AuthLayout>
+      <h1>{t('resetTitle')}</h1>
+      <form onSubmit={handleSubmit}>
+        <PasswordField label={t('resetNewPassword')} value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} autoComplete="new-password" hint={t('resetNewPasswordPlaceholder')} />
+        <PasswordField label={t('resetConfirm')} value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
+        {error && <div className="error" role="alert">{error}</div>}
+        <button type="submit" disabled={loading} className="btn-primary">
+          {loading ? t('resetLoading') : t('resetBtn')}
+        </button>
+      </form>
+    </AuthLayout>
   );
 }
 

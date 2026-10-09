@@ -13,3 +13,6 @@ backend/storage/
 
 # Логи
 npm-debug.log*
+
+# Ключи API — в репозиторий не попадают (на сервере ключ лежит в backend/.env)
+deepseek.txt
