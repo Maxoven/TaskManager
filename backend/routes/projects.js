@@ -286,10 +286,11 @@ router.get('/:id', async (req, res) => {
       SELECT t.id, t.project_id, t.status_id, t.title, t.description,
         t.start_date, t.end_date, t.created_at, t.updated_at,
         COALESCE((
-          SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'avatar', u.avatar) ORDER BY u.name)
+          SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'avatar', u.avatar, 'hours', ta.hours) ORDER BY u.name)
           FROM task_assignees ta JOIN users u ON ta.user_id = u.id
           WHERE ta.task_id = t.id
         ), '[]') AS assignees,
+        (SELECT SUM(ta.hours) FROM task_assignees ta WHERE ta.task_id = t.id) AS effort_hours,
         (SELECT COUNT(*)::int FROM task_attachments f WHERE f.task_id = t.id) AS attachments_count,
         EXISTS (SELECT 1 FROM task_reports tr WHERE tr.task_id = t.id) AS has_report,
         COALESCE((

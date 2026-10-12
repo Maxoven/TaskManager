@@ -327,3 +327,113 @@
     white-space: nowrap;
   }
 }
+
+/* ─── Трудоёмкость по исполнителям ─── */
+.effort-intro {
+  margin: 0 0 var(--space-2);
+}
+
+.effort-list {
+  list-style: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.effort-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.effort-row + .effort-row {
+  border-top: 1px solid var(--color-border);
+}
+
+.effort-row.is-over {
+  background: var(--status-warning-bg);
+}
+
+.effort-person {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+}
+
+.effort-person span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.effort-input-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.form-group .effort-input {
+  width: 5.5rem;
+  min-height: var(--control-height-sm);
+  padding: 4px var(--space-2);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.effort-unit {
+  min-width: 1.5em;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Предупреждение строки — под именем, во всю ширину */
+.effort-row-warn {
+  flex-basis: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--status-warning-fg);
+  font-size: var(--text-xs);
+}
+
+.effort-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: var(--space-2) 0 var(--space-1);
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.effort-total strong {
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.effort-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--status-warning-border);
+  border-radius: var(--radius-md);
+  background: var(--status-warning-bg);
+  color: var(--status-warning-fg);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+}
+
+.effort-warning .icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}

@@ -8,6 +8,7 @@ import { ROLE_LABEL_KEYS } from './TeamSwitcher';
 import AppHeader from './AppHeader';
 import Modal from './Modal';
 import TeamSettings from './TeamSettings';
+import Workload from './Workload';
 import ProjectAccessPicker, { newProjectAccess, accessPayload } from './ProjectAccessPicker';
 import Icon from './Icon';
 import Avatar from './Avatar';
@@ -21,7 +22,7 @@ import {
 } from '../services/api';
 import './Dashboard.css';
 
-const TABS = ['projects', 'mytasks', 'team'];
+const TABS = ['projects', 'mytasks', 'workload', 'team'];
 
 // Прогресс проекта на карточке: выполнено / всего и просрочки
 function ProjectStats({ project }) {
@@ -157,7 +158,7 @@ function Dashboard({ user, onLogout }) {
 
   // Вкладка хранится в адресе (?tab=team), чтобы на неё можно было сослаться и вернуться кнопкой «Назад».
   // В разделе «Отдельные проекты» команды нет — и вкладки «Команда» тоже.
-  const tabs = isShared ? TABS.filter(tab => tab !== 'team') : TABS;
+  const tabs = isShared ? TABS.filter(tab => tab !== 'team' && tab !== 'workload') : TABS;
   const tabParam = searchParams.get('tab');
   const activeTab = tabs.includes(tabParam) ? tabParam : 'projects';
   const setActiveTab = (tab) => setSearchParams(tab === 'projects' ? {} : { tab });
@@ -418,6 +419,12 @@ function Dashboard({ user, onLogout }) {
           {overdueCount > 0 && <span className="count-badge count-badge-danger" title={t('overdueBadgeTitle')}>{overdueCount}</span>}
         </button>
         {!isShared && (
+          <button type="button" className={`tab-btn segmented-btn ${activeTab === 'workload' ? 'active' : ''}`} aria-current={activeTab === 'workload' ? 'page' : undefined} onClick={() => setActiveTab('workload')}>
+            <Icon name="clock" />
+            {t('tabWorkload')}
+          </button>
+        )}
+        {!isShared && (
           <button type="button" className={`tab-btn segmented-btn ${activeTab === 'team' ? 'active' : ''}`} aria-current={activeTab === 'team' ? 'page' : undefined} onClick={() => setActiveTab('team')}>
             <Icon name="users" />
             {t('tabTeam')}
@@ -578,6 +585,10 @@ function Dashboard({ user, onLogout }) {
           </div>
         );
       })()}
+
+      {activeTab === 'workload' && currentTeam && (
+        <Workload key={currentTeam.id} team={currentTeam} />
+      )}
 
       {activeTab === 'team' && currentTeam && (
         <TeamSettings key={currentTeam.id} teamId={currentTeam.id} user={user} onChanged={reloadAll} />

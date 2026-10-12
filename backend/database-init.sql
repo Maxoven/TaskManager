@@ -269,3 +269,14 @@ CREATE TABLE IF NOT EXISTS project_access (
     PRIMARY KEY (project_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_project_access_user ON project_access(user_id);
+
+-- ─── Трудоёмкость ─────────────────────────────────────────────────────────
+-- Человеко-часы, распределённые на исполнителя задачи. Трудоёмкость задачи — их сумма.
+-- NULL — не указано (у задач, созданных до этой версии).
+ALTER TABLE task_assignees ADD COLUMN IF NOT EXISTS hours NUMERIC(7, 2);
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'task_assignees_hours_check') THEN
+        ALTER TABLE task_assignees ADD CONSTRAINT task_assignees_hours_check CHECK (hours IS NULL OR (hours >= 0 AND hours <= 10000));
+    END IF;
+END $$;

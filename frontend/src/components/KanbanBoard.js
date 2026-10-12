@@ -11,7 +11,7 @@ import GanttChart from './GanttChart';
 import { useLanguage } from '../context/LanguageContext';
 import { useTeams, SHARED } from '../context/TeamContext';
 import AppHeader from './AppHeader';
-import { formatDate, parseDate, deadlineState, DEADLINE_CHIP, DEADLINE_ICON } from '../utils/date';
+import { formatDate, parseDate, deadlineState, formatHours, DEADLINE_CHIP, DEADLINE_ICON } from '../utils/date';
 import Icon from './Icon';
 import Avatar from './Avatar';
 import { BoardSkeleton } from './Skeleton';
@@ -404,6 +404,11 @@ function KanbanBoard({ user, onLogout }) {
                                             <Icon name={DEADLINE_ICON[deadlineClass] || 'calendar'} size={13} />
                                             {formatDate(task.end_date, lang)}
                                             {deadlineLabel && <span className="visually-hidden"> — {deadlineLabel}</span>}
+                                          </span>
+                                        )}
+                                        {task.effort_hours > 0 && (
+                                          <span className="task-effort-badge" title={t('effortBadgeTitle', { hours: formatHours(task.effort_hours, lang) })}>
+                                            <Icon name="clock" size={13} />{formatHours(task.effort_hours, lang)} {t('hoursShort')}
                                           </span>
                                         )}
                                         {task.attachments_count > 0 && (

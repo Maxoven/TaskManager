@@ -6,7 +6,7 @@ const pool = require('../config/database');
 const { withTransaction } = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const { sendTaskAssigned } = require('../services/email');
-const { canSeeProjectSql } = require('../services/access');
+const { canSeeProjectSql, getTeamRole, isManager } = require('../services/access');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -58,10 +58,11 @@ const TASK_FIELDS = `
   t.id, t.project_id, t.status_id, t.title, t.description,
   t.start_date, t.end_date, t.created_at, t.updated_at,
   COALESCE((
-    SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'avatar', u.avatar) ORDER BY u.name)
+    SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'avatar', u.avatar, 'hours', ta.hours) ORDER BY u.name)
     FROM task_assignees ta JOIN users u ON ta.user_id = u.id
     WHERE ta.task_id = t.id
   ), '[]') AS assignees,
+  (SELECT SUM(ta.hours) FROM task_assignees ta WHERE ta.task_id = t.id) AS effort_hours,
   (SELECT COUNT(*)::int FROM task_attachments f WHERE f.task_id = t.id) AS attachments_count,
   EXISTS (SELECT 1 FROM task_reports tr WHERE tr.task_id = t.id) AS has_report,
   COALESCE((
@@ -135,16 +136,26 @@ async function saveDependencies(db, taskId, projectId, dependencies) {
 
 // Исполнителем может быть только тот, у кого есть доступ к проекту (команда или гость) —
 // иначе через задачу можно узнать имя/email любого пользователя и слать ему письма
-async function saveAssignees(db, taskId, projectId, assigneeIds) {
+// Трудоёмкость исполнителя: { [userId]: часы }. Пусто или некорректно — не указано (NULL)
+function hoursFor(hoursMap, userId) {
+  const raw = hoursMap && typeof hoursMap === 'object' ? hoursMap[userId] : undefined;
+  if (raw === undefined || raw === null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 && n <= 10000 ? Math.round(n * 100) / 100 : null;
+}
+
+async function saveAssignees(db, taskId, projectId, assigneeIds, hoursMap) {
   const ids = toIntArray(assigneeIds);
   if (ids.length === 0) return [];
   const { rows } = await db.query(`
-    INSERT INTO task_assignees (task_id, user_id)
-    SELECT $1, u.id FROM users u, projects p
-    WHERE p.id = $3 AND u.id = ANY($2::int[]) AND ${canSeeProjectSql('p', 'u.id')}
+    INSERT INTO task_assignees (task_id, user_id, hours)
+    SELECT $1, u.id, h.hours FROM users u
+    JOIN projects p ON p.id = $3
+    JOIN unnest($2::int[], $4::numeric[]) AS h(user_id, hours) ON h.user_id = u.id
+    WHERE ${canSeeProjectSql('p', 'u.id')}
     ON CONFLICT DO NOTHING
     RETURNING user_id
-  `, [taskId, ids, projectId]);
+  `, [taskId, ids, projectId, ids.map(uid => hoursFor(hoursMap, uid))]);
   return rows.map(r => r.user_id);
 }
 
@@ -178,6 +189,80 @@ async function notifyAssignees(userIds, taskTitle, projectId) {
   }
 }
 
+// ─── Трудоёмкость по исполнителям за период ───────────────────────────────
+// Часы задачи распределяются равномерно по её календарным дням (с начала по конец включительно),
+// в период попадает доля, приходящаяся на пересечение дней. Задачи без сроков считаются отдельно.
+// Владелец и админы видят всех людей команды, участник — только себя. Учитываются только
+// проекты, которые видит запрашивающий.
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function workingDays(from, to) {
+  let count = 0;
+  for (let d = new Date(`${from}T00:00:00Z`); d <= new Date(`${to}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
+    const day = d.getUTCDay();
+    if (day !== 0 && day !== 6) count += 1;
+  }
+  return count;
+}
+
+router.get('/workload', async (req, res) => {
+  try {
+    const teamId = Number(req.query.teamId);
+    const { from, to } = req.query;
+    if (!Number.isInteger(teamId) || !ISO_DATE.test(from || '') || !ISO_DATE.test(to || '') || to < from) {
+      return res.status(400).json({ error: req.t('workloadParamsInvalid') });
+    }
+    const role = await getTeamRole(pool, teamId, req.userId);
+    if (!role) return res.status(403).json({ error: req.t('accessDenied') });
+    const everyone = isManager(role);
+
+    const { rows } = await pool.query(`
+      WITH a AS (
+        SELECT ta.user_id, ta.hours, t.id AS task_id, t.title, p.id AS project_id, p.name AS project_name,
+          COALESCE(t.start_date, t.end_date) AS s, COALESCE(t.end_date, t.start_date) AS e
+        FROM task_assignees ta
+        JOIN tasks t ON t.id = ta.task_id
+        JOIN projects p ON p.id = t.project_id
+        WHERE p.team_id = $1 AND ta.hours IS NOT NULL AND ta.hours > 0
+          AND ${canSeeProjectSql('p', '$2')}
+          AND ($5::boolean OR ta.user_id = $2)
+      )
+      SELECT a.*, u.name, u.avatar,
+        CASE WHEN a.s IS NULL THEN NULL
+             ELSE ROUND(a.hours * GREATEST(0, LEAST(a.e, $4::date) - GREATEST(a.s, $3::date) + 1) / (a.e - a.s + 1), 2)
+        END AS hours_in_period
+      FROM a JOIN users u ON u.id = a.user_id
+      WHERE a.s IS NULL OR (a.s <= $4::date AND a.e >= $3::date)
+      ORDER BY u.name, a.s NULLS LAST, a.title
+    `, [teamId, req.userId, from, to, everyone]);
+
+    // Владельцу и админам показываем и тех, у кого часов нет, — видно, кто свободен
+    const { rows: people } = everyone
+      ? await pool.query(`
+          SELECT u.id, u.name, u.avatar FROM team_memberships tm JOIN users u ON u.id = tm.user_id
+          WHERE tm.team_id = $1 AND tm.status = 'approved' ORDER BY u.name`, [teamId])
+      : await pool.query('SELECT id, name, avatar FROM users WHERE id = $1', [req.userId]);
+
+    const byUser = new Map(people.map(p => [p.id, { ...p, hours: 0, undated_hours: 0, tasks: [] }]));
+    for (const r of rows) {
+      if (!byUser.has(r.user_id)) byUser.set(r.user_id, { id: r.user_id, name: r.name, avatar: r.avatar, hours: 0, undated_hours: 0, tasks: [] });
+      const person = byUser.get(r.user_id);
+      if (r.hours_in_period === null) person.undated_hours += r.hours;
+      else person.hours += r.hours_in_period;
+      person.tasks.push({
+        task_id: r.task_id, title: r.title, project_id: r.project_id, project_name: r.project_name,
+        start: r.s, end: r.e, hours_total: r.hours, hours_in_period: r.hours_in_period
+      });
+    }
+    const round = (n) => Math.round(n * 100) / 100;
+    const result = [...byUser.values()].map(p => ({ ...p, hours: round(p.hours), undated_hours: round(p.undated_hours) }));
+    res.json({ from, to, working_days: workingDays(from, to), hours_per_day: 8, people: result });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: req.t('workloadError') });
+  }
+});
+
 // ─── Мои задачи (назначенные мне) ─────────────────────────────────────────
 router.get('/my', async (req, res) => {
   try {
@@ -206,7 +291,7 @@ router.get('/my', async (req, res) => {
 // ─── Создать задачу ─────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
   try {
-    const { statusId, description, startDate, endDate, assigneeIds, dependencies } = req.body;
+    const { statusId, description, startDate, endDate, assigneeIds, assigneeHours, dependencies } = req.body;
     const projectId = Number(req.body.projectId);
     const title = typeof req.body.title === 'string' ? req.body.title.trim().slice(0, 255) : '';
 
@@ -229,7 +314,7 @@ router.post('/', async (req, res) => {
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
         [projectId, statusId, title, description || null, startDate || null, endDate || null]
       );
-      const added = await saveAssignees(client, created.id, projectId, assigneeIds);
+      const added = await saveAssignees(client, created.id, projectId, assigneeIds, assigneeHours);
       await saveDependencies(client, created.id, projectId, dependencies);
       return { taskId: created.id, assigned: added };
     });
@@ -248,7 +333,7 @@ router.post('/', async (req, res) => {
 router.patch('/:id', requireTaskAccess, async (req, res) => {
   try {
     const { id } = req.params;
-    const { statusId, description, startDate, endDate, assigneeIds, dependencies } = req.body;
+    const { statusId, description, startDate, endDate, assigneeIds, assigneeHours, dependencies } = req.body;
     const projectId = req.taskProjectId;
     const title = typeof req.body.title === 'string' ? req.body.title.trim().slice(0, 255) : req.body.title;
 
@@ -287,7 +372,7 @@ router.patch('/:id', requireTaskAccess, async (req, res) => {
         const oldIds = oldAssignees.map(a => a.user_id);
 
         await client.query('DELETE FROM task_assignees WHERE task_id = $1', [id]);
-        const saved = await saveAssignees(client, id, projectId, assigneeIds);
+        const saved = await saveAssignees(client, id, projectId, assigneeIds, assigneeHours);
         added = saved.filter(uid => !oldIds.includes(uid));
       }
 

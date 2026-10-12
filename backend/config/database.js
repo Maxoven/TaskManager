@@ -4,6 +4,8 @@ require('dotenv').config();
 // DATE (oid 1082) отдаём строкой 'YYYY-MM-DD', а не JS Date:
 // иначе дата сдвигается на день из-за часового пояса сервера при сериализации в JSON.
 types.setTypeParser(1082, (value) => value);
+// NUMERIC (oid 1700) — числом, а не строкой: трудоёмкость в часах нужна для расчётов на фронтенде
+types.setTypeParser(1700, (value) => (value === null ? null : parseFloat(value)));
 
 const pool = new Pool(
   process.env.DATABASE_URL

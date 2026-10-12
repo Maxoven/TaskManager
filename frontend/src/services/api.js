@@ -56,6 +56,8 @@ export const createTask = (data) => api.post('/tasks', data);
 export const updateTask = (id, data) => api.patch(`/tasks/${id}`, data);
 export const deleteTask = (id) => api.delete(`/tasks/${id}`);
 export const getMyTasks = () => api.get('/tasks/my');
+// Трудоёмкость по исполнителям команды за период (даты 'YYYY-MM-DD')
+export const getWorkload = (teamId, from, to) => api.get('/tasks/workload', { params: { teamId, from, to } });
 
 // Reports
 export const getReportByToken = (token) => api.get(`/tasks/report-token/${token}`);
