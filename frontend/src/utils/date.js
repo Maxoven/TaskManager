@@ -54,10 +54,10 @@ export function taskDays(start, end) {
   return Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
 }
 
-// Человеко-часы для показа: 12, 7.5, 0.25 — без лишних нулей
-export function formatHours(value, lang) {
+// Человеко-часы для показа: 12, 7.5, 0.25 — без лишних нулей. digits — сколько знаков после запятой
+export function formatHours(value, lang, digits = 2) {
   if (value === null || value === undefined || value === '') return '';
-  return Number(value).toLocaleString(lang === 'en' ? 'en-US' : 'ru-RU', { maximumFractionDigits: 2 });
+  return Number(value).toLocaleString(lang === 'en' ? 'en-US' : 'ru-RU', { maximumFractionDigits: digits });
 }
 
 export const HOURS_PER_DAY = 8;

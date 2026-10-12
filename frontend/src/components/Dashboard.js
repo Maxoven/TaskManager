@@ -421,7 +421,8 @@ function Dashboard({ user, onLogout }) {
         {!isShared && (
           <button type="button" className={`tab-btn segmented-btn ${activeTab === 'workload' ? 'active' : ''}`} aria-current={activeTab === 'workload' ? 'page' : undefined} onClick={() => setActiveTab('workload')}>
             <Icon name="clock" />
-            {t('tabWorkload')}
+            <span className="tab-label-full">{t('tabWorkload')}</span>
+            <span className="tab-label-short" aria-hidden="true">{t('tabWorkloadShort')}</span>
           </button>
         )}
         {!isShared && (

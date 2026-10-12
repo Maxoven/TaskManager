@@ -408,7 +408,7 @@ function KanbanBoard({ user, onLogout }) {
                                         )}
                                         {task.effort_hours > 0 && (
                                           <span className="task-effort-badge" title={t('effortBadgeTitle', { hours: formatHours(task.effort_hours, lang) })}>
-                                            <Icon name="clock" size={13} />{formatHours(task.effort_hours, lang)} {t('hoursShort')}
+                                            <Icon name="clock" size={13} />{t('effortBadge', { hours: formatHours(task.effort_hours, lang) })}
                                           </span>
                                         )}
                                         {task.attachments_count > 0 && (

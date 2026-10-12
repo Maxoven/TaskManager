@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useLanguage } from '../context/LanguageContext';
 import { canManageRole } from '../context/TeamContext';
 import { getWorkload } from '../services/api';
-import { formatDate, formatHours } from '../utils/date';
+import { formatDate, formatHours, taskDays, HOURS_PER_DAY } from '../utils/date';
 import apiError from '../utils/apiError';
 import Avatar from './Avatar';
 import Icon from './Icon';
@@ -29,6 +29,31 @@ function presetRange(kind) {
 }
 
 const PRESETS = ['week', 'month', 'nextMonth'];
+
+// Часы в отчёте — с одним знаком: доля часов за период редко бывает «круглой»
+const h1 = (value, lang) => formatHours(value, lang, 1);
+
+// CSV для Excel: точка с запятой и BOM, чтобы кириллица открывалась без настройки
+function downloadCsv(data, t) {
+  const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const num = (v) => (v === null || v === undefined ? '' : String(Math.round(v * 100) / 100).replace('.', ','));
+  const lines = [[t('csvPerson'), t('csvProject'), t('csvTask'), t('csvStart'), t('csvEnd'), t('csvHoursInPeriod'), t('csvHoursTotal')].map(cell).join(';')];
+  data.people.forEach(p => {
+    p.tasks.forEach(task => {
+      lines.push([cell(p.name), cell(task.project_name), cell(task.title), cell(task.start || ''), cell(task.end || ''), num(task.hours_in_period), num(task.hours_total)].join(';'));
+    });
+    lines.push([cell(p.name), cell(t('csvPersonTotal')), '', '', '', num(p.hours), ''].join(';'));
+  });
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `workload_${data.from}_${data.to}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 function Workload({ team }) {
   const { t, lang } = useLanguage();
@@ -89,6 +114,9 @@ function Workload({ team }) {
             <span>{t('workloadTo')}</span>
             <input type="date" value={range.to} min={range.from || undefined} onChange={(e) => setRange(r => ({ ...r, to: e.target.value }))} />
           </label>
+          <button type="button" className="btn-secondary workload-export" onClick={() => data && downloadCsv(data, t)} disabled={!data || rangeInvalid}>
+            <Icon name="download" size={16} />{t('workloadExport')}
+          </button>
         </div>
       </div>
 
@@ -98,13 +126,21 @@ function Workload({ team }) {
       {data && !rangeInvalid && (
         <>
           <p className="workload-summary">
-            {t('workloadSummary', {
+            {t(everyone ? 'workloadSummary' : 'workloadSummarySelf', {
               from: formatDate(data.from, lang), to: formatDate(data.to, lang),
               days: data.working_days, hours: formatHours(capacity, lang)
             })}
           </p>
 
           <ul className={`workload-list ${loading ? 'is-loading' : ''}`} aria-busy={loading}>
+            <li className="workload-head" aria-hidden="true">
+              <span />
+              <span>{t('workloadColPerson')}</span>
+              <span>{t('workloadColHours')}</span>
+              <span>{t('workloadColLoad')}</span>
+              <span />
+              <span />
+            </li>
             {data.people.map(person => {
               const percent = capacity ? Math.round((person.hours / capacity) * 100) : 0;
               const level = percent > 100 ? 'over' : percent >= 80 ? 'high' : 'ok';
@@ -115,12 +151,13 @@ function Workload({ team }) {
                   <div className="workload-row">
                     <Avatar name={person.name} src={person.avatar} size="sm" aria-hidden="true" />
                     <span className="workload-name">{person.name}</span>
-                    <span className="workload-hours"><strong>{formatHours(person.hours, lang)}</strong> {t('hoursShort')}</span>
+                    <span className="workload-hours"><strong>{h1(person.hours, lang)}</strong> {t('hoursShort')}</span>
                     <span className="workload-bar" aria-hidden="true">
                       <span style={{ width: `${Math.min(percent, 100)}%` }} />
                     </span>
                     <span className="workload-percent" title={t('workloadPercentTitle', { hours: formatHours(capacity, lang) })}>
                       {level === 'over' && <Icon name="alert" size={13} />}{percent}%
+                      <span className="visually-hidden"> {t('workloadPercentTitle', { hours: formatHours(capacity, lang) })}</span>
                     </span>
                     {person.tasks.length > 0 ? (
                       <button type="button" className="btn-icon workload-toggle" onClick={() => toggle(person.id)} aria-expanded={expanded} aria-controls={listId} aria-label={t(expanded ? 'workloadHideTasks' : 'workloadShowTasks', { name: person.name })}>
@@ -129,13 +166,20 @@ function Workload({ team }) {
                     ) : <span className="workload-toggle-spacer" aria-hidden="true" />}
                   </div>
                   {person.undated_hours > 0 && (
-                    <p className="workload-undated">{t('workloadUndated', { hours: formatHours(person.undated_hours, lang) })}</p>
+                    <p className="workload-undated">{t('workloadUndated', { hours: h1(person.undated_hours, lang) })}</p>
                   )}
                   {expanded && (
                     <ul className="workload-tasks" id={listId}>
-                      {person.tasks.map(task => (
-                        <li key={task.task_id}>
-                          <Link to={`/project/${task.project_id}?task=${task.task_id}`} className="workload-task-title">{task.title}</Link>
+                      {person.tasks.map(task => {
+                        // Задача, в срок которой часы исполнителя не помещаются (8 ч в день)
+                        const days = task.start ? taskDays(task.start, task.end) : null;
+                        const over = days && task.hours_total / HOURS_PER_DAY > days;
+                        return (
+                        <li key={task.task_id} className={over ? 'is-over' : ''}>
+                          <Link to={`/project/${task.project_id}?task=${task.task_id}`} className="workload-task-title">
+                            {over && <span className="workload-task-over" title={t('workloadTaskOver')}><Icon name="alert" size={13} /><span className="visually-hidden">{t('workloadTaskOver')}: </span></span>}
+                            {task.title}
+                          </Link>
                           <span className="workload-task-meta">
                             {task.project_name}
                             {' · '}
@@ -143,16 +187,27 @@ function Workload({ team }) {
                           </span>
                           <span className="workload-task-hours">
                             {task.hours_in_period === null
-                              ? t('workloadTaskUndated', { total: formatHours(task.hours_total, lang) })
-                              : t('workloadTaskHours', { part: formatHours(task.hours_in_period, lang), total: formatHours(task.hours_total, lang) })}
+                              ? t('workloadTaskUndated', { total: h1(task.hours_total, lang) })
+                              : t('workloadTaskHours', { part: h1(task.hours_in_period, lang), total: h1(task.hours_total, lang) })}
                           </span>
                         </li>
-                      ))}
+                        );
+                      })}
                     </ul>
                   )}
                 </li>
               );
             })}
+            {everyone && data.people.length > 1 && (() => {
+              const total = data.people.reduce((sum, p) => sum + p.hours, 0);
+              const teamCapacity = capacity * data.people.length;
+              const pct = teamCapacity ? Math.round((total / teamCapacity) * 100) : 0;
+              return (
+                <li className="workload-total">
+                  {t('workloadTeamTotal', { hours: h1(total, lang), capacity: formatHours(teamCapacity, lang), percent: pct })}
+                </li>
+              );
+            })()}
           </ul>
           {data.people.every(p => p.tasks.length === 0) && <p className="hint-text">{t('workloadEmpty')}</p>}
           <p className="field-hint workload-note">{t('workloadHowCounted')}</p>

@@ -309,14 +309,14 @@ function TaskModal({ task, members, statuses, defaultStatusId, onSave, onDelete,
                           className="effort-input"
                           value={formData.assigneeHours[m.id] ?? ''}
                           onChange={(e) => handleHoursChange(m.id, e.target.value)}
-                          placeholder="0"
+                          placeholder="—"
                           aria-describedby={over ? `${inputId}-warn` : undefined}
                         />
                         <span className="effort-unit" aria-hidden="true">{t('hoursShort')}</span>
                       </span>
                       {over && (
                         <span id={`${inputId}-warn`} className="effort-row-warn">
-                          <Icon name="alert" size={13} />{t('effortRowOver', { days: formatHours(hoursOf(m.id) / HOURS_PER_DAY, lang) })}
+                          <Icon name="alert" size={13} />{t('effortRowOver2', { days: formatHours(hoursOf(m.id) / HOURS_PER_DAY, lang) })}
                         </span>
                       )}
                     </li>
@@ -327,15 +327,19 @@ function TaskModal({ task, members, statuses, defaultStatusId, onSave, onDelete,
                 <span>{t('effortTotal')}</span>
                 <strong>{formatHours(total, lang)} {t('hoursShort')}</strong>
               </p>
+              {/* Предупреждение — сразу под итогом и коротко: подробности уже в строке исполнителя */}
+              {days && overloaded.length > 0 && (
+                <p className="effort-warning" role="status">
+                  <Icon name="alert" size={16} />
+                  <span>{t('effortWarning', { names: overloaded.map(m => m.name).join(', '), days, hours: days * HOURS_PER_DAY })}</span>
+                </p>
+              )}
               {days ? (
-                overloaded.length > 0 ? (
-                  <p className="effort-warning" role="status">
-                    <Icon name="alert" size={16} />
-                    <span>{t('effortWarning', { names: overloaded.map(m => m.name).join(', '), days, hours: days * HOURS_PER_DAY })}</span>
-                  </p>
-                ) : (
-                  <p className="field-hint">{t('effortCapacityHint', { days, hours: days * HOURS_PER_DAY })}</p>
-                )
+                <p className="field-hint">{t('effortCapacityHint', {
+                  days, hours: days * HOURS_PER_DAY,
+                  from: formatDate(formData.startDate || formData.endDate, lang),
+                  to: formatDate(formData.endDate || formData.startDate, lang)
+                })}</p>
               ) : (
                 <p className="field-hint">{t('effortNoDatesHint')}</p>
               )}
