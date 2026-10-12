@@ -226,7 +226,7 @@ function TeamSettings({ teamId, user, onChanged }) {
           <div className="team-header-text">
             <h2>{team.name}</h2>
             <p className="team-hint">
-              {t('yourRoleIs')} <strong className={`role-chip role-chip-${team.role}`}>{t(ROLE_LABEL_KEYS[team.role])}</strong>
+              {t('yourRoleIs')} <strong className={`role-chip role-chip-${team.role}`}><Icon name={ROLE_ICONS[team.role]} size={13} />{t(ROLE_LABEL_KEYS[team.role])}</strong>
             </p>
           </div>
         )}

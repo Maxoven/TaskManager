@@ -430,9 +430,17 @@
 
 .people-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-3);
   padding: var(--space-3);
+}
+
+.people-item .people-avatar {
+  margin-top: 2px;
+}
+
+.people-item > .btn-small {
+  align-self: center;
 }
 
 .people-item + .people-item {

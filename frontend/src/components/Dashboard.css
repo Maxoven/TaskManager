@@ -264,10 +264,15 @@
   margin-top: var(--space-10);
 }
 
+.section-header + .owner-group {
+  margin-top: var(--space-4);
+}
+
 .owner-group-title {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  margin-bottom: var(--space-3);
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
 }
@@ -555,7 +560,7 @@
 
 .role-chip-owner { background: var(--status-warning-bg); color: var(--status-warning-fg); }
 .role-chip-admin { background: var(--status-info-bg); color: var(--status-info-fg); }
-.role-chip-member { background: var(--color-surface-sunken); color: var(--color-text-muted); }
+.role-chip-member { background: var(--color-surface-hover); color: var(--color-text-muted); box-shadow: inset 0 0 0 1px var(--color-border); }
 
 /* «Команда X · ваша роль» под приветствием */
 .team-context {
@@ -626,7 +631,7 @@
   align-items: center;
   gap: var(--space-3);
   flex-wrap: wrap;
-  max-width: 760px;
+  max-width: 50rem;
   margin-bottom: var(--space-5);
 }
 
@@ -653,7 +658,7 @@
 }
 
 .roles-explainer {
-  max-width: 760px;
+  max-width: 50rem;
   margin-bottom: var(--space-6);
 }
 
@@ -712,13 +717,20 @@
 }
 
 .team-add-form {
-  max-width: 760px;
+  max-width: 50rem;
 }
 
 .invite-role {
+  min-width: 0; /* у fieldset по умолчанию min-content — не даём ему распирать карточку */
   margin: var(--space-4) 0 0;
   padding: 0;
   border: 0;
+}
+
+.invite-role-segmented {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .invite-role legend {
@@ -726,6 +738,8 @@
 }
 
 .invite-role-segmented .segmented-btn {
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 6px;
 }
 
@@ -744,7 +758,7 @@
 }
 
 .team-list {
-  max-width: 760px;
+  max-width: 50rem;
 }
 
 .team-member-meta {
@@ -771,12 +785,12 @@
 }
 
 .team-alone-hint {
-  max-width: 760px;
+  max-width: 50rem;
   margin: 0 0 var(--space-4);
 }
 
 .team-danger {
-  max-width: 760px;
+  max-width: 50rem;
   margin-top: var(--space-10);
   padding-top: var(--space-5);
   border-top: 1px solid var(--color-border);
@@ -864,19 +878,29 @@
   }
 
   .team-member-info {
-    flex-basis: calc(100% - 52px);
+    flex-basis: calc(100% - 40px - var(--space-3));
   }
 
   /* Роль и «Убрать» — своей строкой под именем, поровну */
   .team-member-controls {
-    width: calc(100% - 52px);
-    margin-left: 52px;
+    width: calc(100% - 40px - var(--space-3));
+    margin-left: calc(40px + var(--space-3));
+    flex-wrap: wrap;
   }
 
-  .team-member-controls > .team-role-select,
+  /* Выбор роли не сжимается до одной буквы: кнопка рядом уйдёт на новую строку */
+  .team-member-controls > .team-role-select {
+    flex: 1 1 9rem;
+    min-width: 9rem;
+  }
+
+  /* Кнопка не сжимается меньше подписи — если не влезает, уходит на свою строку */
   .team-member-controls > .btn-small {
-    flex: 1 1 0;
-    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .team-header-text {
+    flex-basis: calc(100% - 40px - var(--space-3));
   }
 
   .roles-explainer ul {
