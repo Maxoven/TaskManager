@@ -52,6 +52,11 @@ rsync -az --delete --exclude .DS_Store frontend/build/ "$HOST:$REMOTE/frontend/"
 
 echo "6/6 Проверка"
 ssh "$HOST" "pm2 logs taskmanager-api --lines 6 --nostream --out"
-curl -fsS https://taskmanager.ecoestate.tv/api && echo
+# -L — идём по редиректам nginx (http→https, /api→/api/); ждём JSON от API, а не HTML
+if curl -fsSL https://taskmanager.ecoestate.tv/api/ | grep -q '"message"'; then
+  echo "    API отвечает"
+else
+  echo "    ВНИМАНИЕ: API не ответил JSON — проверьте: ssh $HOST 'pm2 logs taskmanager-api --lines 50'" >&2
+fi
 echo "Готово. Откат кода: ssh $HOST 'cd $REMOTE && tar xzf ~/taskmanager-backup-$STAMP.tgz && cd backend && npm ci --omit=dev && pm2 restart taskmanager-api'"
 echo "Дамп базы до выкладки: ~/taskmanager-db-$STAMP.sql.gz (восстановление: gunzip -c … | psql <база>)"
