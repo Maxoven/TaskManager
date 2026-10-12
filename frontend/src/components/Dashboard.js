@@ -8,6 +8,7 @@ import { ROLE_LABEL_KEYS } from './TeamSwitcher';
 import AppHeader from './AppHeader';
 import Modal from './Modal';
 import TeamSettings from './TeamSettings';
+import ProjectAccessPicker, { newProjectAccess, accessPayload } from './ProjectAccessPicker';
 import Icon from './Icon';
 import Avatar from './Avatar';
 import { DashboardSkeleton } from './Skeleton';
@@ -16,7 +17,7 @@ import apiError from '../utils/apiError';
 import {
   getProjects, createProject, updateProject, deleteProject,
   getPendingInvitations, respondToInvitation, reorderProjects, getMyTasks,
-  respondToTeamInvitation
+  respondToTeamInvitation, getTeamDetails
 } from '../services/api';
 import './Dashboard.css';
 
@@ -43,18 +44,28 @@ function ProjectStats({ project }) {
   );
 }
 
-// Форма проекта — одна для создания и редактирования
-function ProjectFormModal({ project, onSubmit, onClose, teamName }) {
+// Форма проекта — одна для создания и редактирования.
+// При создании ещё и «Кто видит проект»: по умолчанию только отмеченные люди команды.
+function ProjectFormModal({ project, onSubmit, onClose, teamName, teamId, userId }) {
   const { t } = useLanguage();
   const [form, setForm] = useState({ name: project?.name || '', description: project?.description || '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [roster, setRoster] = useState(null);
+  const [access, setAccess] = useState(() => newProjectAccess(userId));
+
+  useEffect(() => {
+    if (project || !teamId) return;
+    getTeamDetails(teamId)
+      .then(({ data }) => setRoster(data.members.filter(m => m.status === 'approved')))
+      .catch(() => setRoster([]));
+  }, [project, teamId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(''); setSaving(true);
     try {
-      await onSubmit(form);
+      await onSubmit(project ? form : { ...form, ...accessPayload(access) });
     } catch (err) {
       setError(apiError(err, t, project ? 'projectUpdateError' : 'projectCreateError'));
       setSaving(false);
@@ -77,6 +88,9 @@ function ProjectFormModal({ project, onSubmit, onClose, teamName }) {
           <label htmlFor="project-description">{t('projectDescLabel')}</label>
           <textarea id="project-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={t('projectDescPlaceholder')} rows="3" />
         </div>
+        {!project && (roster
+          ? <ProjectAccessPicker roster={roster} selfId={userId} value={access} onChange={setAccess} />
+          : <p className="hint-text">{t('loading')}</p>)}
         {error && <div className="error" role="alert">{error}</div>}
         <div className="modal-actions">
           <div className="modal-actions-right">
@@ -101,6 +115,9 @@ function ProjectCard({ project, canManage, onEdit, onDelete }) {
         <h3><Link to={`/project/${project.id}`} className="project-card-link" onClick={(e) => e.stopPropagation()}>{project.name}</Link></h3>
       </div>
       {project.description && <p className="project-card-desc">{project.description}</p>}
+      {project.visibility === 'selected' && (
+        <p className="project-card-access" title={t('accessSelectedChipTitle')}><Icon name="lock" size={13} />{t('accessSelectedChip')}</p>
+      )}
       <ProjectStats project={project} />
       {canManage && (
         <div className="project-card-actions" onClick={(e) => e.stopPropagation()}>
@@ -566,7 +583,7 @@ function Dashboard({ user, onLogout }) {
       </main>
 
       {showCreateModal && (
-        <ProjectFormModal onSubmit={handleCreateProject} onClose={() => setShowCreateModal(false)} teamName={currentTeam?.name} />
+        <ProjectFormModal onSubmit={handleCreateProject} onClose={() => setShowCreateModal(false)} teamName={currentTeam?.name} teamId={currentTeam?.id} userId={user?.id} />
       )}
 
       {editProject && (

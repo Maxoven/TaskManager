@@ -259,7 +259,7 @@ async function sendProjectInvitation(to, inviterName, projectName) {
 }
 
 // ─── Приглашение в команду ────────────────────────────────────────────────────
-// role: 'admin' — ведёт проекты и приглашает людей; 'member' — работает с задачами
+// role: 'admin' — создаёт и ведёт проекты; 'member' — работает с задачами
 async function sendTeamInvitation(to, inviterName, teamName, role) {
   const lang = normalizeLang(to.language);
   const name = escapeHtml(to.name);
@@ -275,8 +275,8 @@ async function sendTeamInvitation(to, inviterName, teamName, role) {
           `Hi, ${name}!`,
           `<strong>${inviter}</strong> invites you to the team <strong>"${team}"</strong> as ${role === 'admin' ? '<strong>an admin</strong>' : '<strong>a member</strong>'}.`,
           role === 'admin'
-            ? 'Admins create and manage the team\'s projects and invite people.'
-            : 'Members see the team\'s projects and create and update tasks in them.',
+            ? 'Admins create team projects and manage the ones they can access.'
+            : 'Members work on tasks in the team projects shared with them.',
           'Sign in to Task Manager to accept or decline the invitation:'
         ],
         button: { href, label: 'Open Task Manager' },
@@ -290,8 +290,8 @@ async function sendTeamInvitation(to, inviterName, teamName, role) {
           `Привет, ${name}!`,
           `<strong>${inviter}</strong> приглашает вас в команду <strong>«${team}»</strong> с ролью <strong>${role === 'admin' ? 'администратор' : 'участник'}</strong>.`,
           role === 'admin'
-            ? 'Администраторы создают и ведут проекты команды и приглашают людей.'
-            : 'Участники видят проекты команды, создают и меняют в них задачи.',
+            ? 'Администраторы создают проекты команды и ведут те, к которым у них есть доступ.'
+            : 'Участники работают с задачами в проектах команды, которые им откроют.',
           'Войдите в Task Manager, чтобы принять или отклонить приглашение:'
         ],
         button: { href, label: 'Открыть Task Manager' },

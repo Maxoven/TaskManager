@@ -804,3 +804,168 @@ input[type='checkbox'] {
     flex-direction: column;
   }
 }
+
+/* ─── «Кто видит проект» (components/ProjectAccessPicker.js) ─── */
+.access-picker {
+  min-width: 0;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  border: 0;
+}
+
+.access-picker-legend {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.access-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.access-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+
+.access-option:hover {
+  border-color: var(--color-border-strong);
+}
+
+.access-option.is-selected {
+  border-color: var(--color-primary-soft-border);
+  background: var(--color-primary-soft);
+}
+
+.access-option input {
+  margin-top: 3px;
+  accent-color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.access-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.access-option-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.access-option-hint {
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
+  color: var(--color-text-muted);
+}
+
+.access-list-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.access-count {
+  color: var(--color-text-muted);
+  font-weight: var(--weight-regular);
+  font-variant-numeric: tabular-nums;
+}
+
+.access-list {
+  list-style: none;
+  max-height: 16rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.access-list li + li {
+  border-top: 1px solid var(--color-border);
+}
+
+.access-person {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.access-person:hover {
+  background: var(--color-surface-hover);
+}
+
+.access-person.is-locked {
+  cursor: default;
+}
+
+.access-person.is-locked:hover {
+  background: transparent;
+}
+
+.access-person-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
+
+.access-person-note {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.access-picker-note {
+  margin-top: var(--space-3);
+}
+
+.members-access-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin: calc(-1 * var(--space-2)) 0 var(--space-3);
+}
+
+.members-access {
+  margin-bottom: var(--space-5);
+}
+
+/* Метка на карточке проекта, который видит не вся команда */
+.project-card-access {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  margin-top: var(--space-2);
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}

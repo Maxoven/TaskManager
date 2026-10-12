@@ -249,3 +249,23 @@ BEGIN
         ALTER TABLE team_members RENAME TO team_members_legacy;
     END IF;
 END $$;
+
+-- ─── Кто видит проект внутри команды ──────────────────────────────────────
+-- visibility = 'team'     — вся команда, включая тех, кто вступит позже (так работали все проекты до этой версии);
+-- visibility = 'selected' — только отмеченные в project_access. Владелец команды видит все проекты всегда.
+-- Существующие проекты получают 'team' (значение по умолчанию) — их доступ не меняется.
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS visibility VARCHAR(10) NOT NULL DEFAULT 'team';
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'projects_visibility_check') THEN
+        ALTER TABLE projects ADD CONSTRAINT projects_visibility_check CHECK (visibility IN ('team', 'selected'));
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS project_access (
+    project_id INT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (project_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_project_access_user ON project_access(user_id);

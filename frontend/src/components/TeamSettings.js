@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { useFeedback } from '../context/FeedbackContext';
-import { canManageRole } from '../context/TeamContext';
 import {
   getTeamDetails, renameTeam, deleteTeam, inviteToTeam, changeTeamRole, removeTeamMember, removeProjectMember
 } from '../services/api';
@@ -16,7 +15,7 @@ const INVITE_ROLES = ['member', 'admin'];
 
 // Вкладка «Команда»: название, что умеют роли, приглашение с выбором роли,
 // состав с изменением ролей, выход из команды или её удаление.
-// Менять что-либо могут владелец и админы; участник видит состав и может выйти.
+// Менять состав и роли может только владелец; остальные видят состав и могут выйти.
 function TeamSettings({ teamId, user, onChanged }) {
   const { t } = useLanguage();
   const { notify, confirm } = useFeedback();
@@ -42,7 +41,8 @@ function TeamSettings({ teamId, user, onChanged }) {
   if (error) return <div className="error" role="alert">{error}</div>;
   if (!team) return <p className="hint-text">{t('loading')}</p>;
 
-  const canManage = canManageRole(team.role);
+  // Состав команды, роли и название меняет только владелец; админ создаёт и ведёт проекты
+  const canManage = !!team.can_manage;
   const isOwner = team.role === 'owner';
   const approved = team.members.filter(m => m.status === 'approved');
   const pending = team.members.filter(m => m.status === 'pending');

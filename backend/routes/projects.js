@@ -5,7 +5,7 @@ const pool = require('../config/database');
 const { withTransaction } = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const { sendProjectInvitation } = require('../services/email');
-const { canSeeProjectSql, projectRoleSql, getProjectRole, getTeamRole, isManager } = require('../services/access');
+const { canSeeProjectSql, teamSeesProjectSql, projectRoleSql, getProjectRole, getTeamRole, isManager } = require('../services/access');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -30,6 +30,47 @@ const PROJECT_ACCESS_SQL = `
   LEFT JOIN teams t ON t.id = p.team_id
   WHERE p.id = $1 AND ${canSeeProjectSql('p', '$2')}
 `;
+
+const VISIBILITIES = ['team', 'selected'];
+const toIds = (value) => (Array.isArray(value) ? [...new Set(value.map(Number).filter(Number.isInteger))] : []);
+
+// Записать, кто из команды видит проект с visibility = 'selected'. Берём только подтверждённых
+// участников команды проекта; тот, кто меняет доступ, всегда остаётся в списке — иначе админ
+// мог бы случайно закрыть проект от самого себя. Возвращает id тех, кто потерял доступ.
+async function saveProjectAccess(db, projectId, teamId, visibility, memberIds, actorId) {
+  const { rows: before } = await db.query(
+    `SELECT tm.user_id FROM team_memberships tm, projects p
+     WHERE p.id = $1 AND tm.team_id = p.team_id AND tm.status = 'approved' AND ${teamSeesProjectSql('p', 'tm.user_id')}`,
+    [projectId]
+  );
+  await db.query('UPDATE projects SET visibility = $1 WHERE id = $2', [visibility, projectId]);
+  await db.query('DELETE FROM project_access WHERE project_id = $1', [projectId]);
+  if (visibility === 'selected') {
+    await db.query(`
+      INSERT INTO project_access (project_id, user_id)
+      SELECT $1, tm.user_id FROM team_memberships tm
+      WHERE tm.team_id = $2 AND tm.status = 'approved' AND tm.role <> 'owner'
+        AND (tm.user_id = ANY($3::int[]) OR tm.user_id = $4)
+      ON CONFLICT DO NOTHING
+    `, [projectId, teamId, memberIds, actorId]);
+  }
+  const { rows: after } = await db.query(
+    `SELECT tm.user_id FROM team_memberships tm, projects p
+     WHERE p.id = $1 AND tm.team_id = p.team_id AND tm.status = 'approved' AND ${teamSeesProjectSql('p', 'tm.user_id')}`,
+    [projectId]
+  );
+  const still = new Set(after.map(r => r.user_id));
+  const lost = before.map(r => r.user_id).filter(id => !still.has(id));
+  if (lost.length > 0) {
+    // Потерявших доступ снимаем с задач проекта (если они не гости этого проекта)
+    await db.query(`
+      DELETE FROM task_assignees
+      WHERE user_id = ANY($2::int[]) AND task_id IN (SELECT id FROM tasks WHERE project_id = $1)
+        AND NOT EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = $1 AND pm.user_id = task_assignees.user_id AND pm.status = 'approved')
+    `, [projectId, lost]);
+  }
+  return lost;
+}
 
 // Удалить с диска файлы задач проектов (записи в БД уходят каскадно)
 function unlinkAttachments(attachments) {
@@ -89,6 +130,9 @@ router.post('/', async (req, res) => {
     if (!Number.isInteger(teamId) || !isManager(await getTeamRole(pool, teamId, req.userId))) {
       return res.status(403).json({ error: req.t('onlyAdminsCreateProjects') });
     }
+    // Новый проект по умолчанию видят только отмеченные; «вся команда» — по выбору
+    const visibility = VISIBILITIES.includes(req.body.visibility) ? req.body.visibility : 'selected';
+    const memberIds = toIds(req.body.memberIds);
     const statusNames = req.t('defaultStatuses');
 
     const project = await withTransaction(async (client) => {
@@ -103,7 +147,8 @@ router.post('/', async (req, res) => {
         SELECT $1, s.name, s.position FROM unnest($2::text[]) WITH ORDINALITY AS s(name, position)
       `, [created.id, statusNames]);
 
-      return created;
+      await saveProjectAccess(client, created.id, teamId, visibility, memberIds, req.userId);
+      return { ...created, visibility };
     });
 
     res.status(201).json(project);
@@ -181,6 +226,26 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// Кто из команды видит проект: вся команда (всегда, включая новых) или только отмеченные
+router.put('/:id/access', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!isManager(await getProjectRole(pool, id, req.userId))) {
+      return res.status(403).json({ error: req.t('onlyAdminsEdit') });
+    }
+    const visibility = req.body.visibility;
+    if (!VISIBILITIES.includes(visibility)) return res.status(400).json({ error: req.t('visibilityInvalid') });
+    const { rows: [project] } = await pool.query('SELECT team_id FROM projects WHERE id = $1', [id]);
+    const lost = await withTransaction(client =>
+      saveProjectAccess(client, id, project.team_id, visibility, toIds(req.body.memberIds), req.userId)
+    );
+    res.json({ message: req.t('accessSaved'), lost: lost.length });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: req.t('accessSaveError') });
+  }
+});
+
 // Получить приглашения (до /:id, чтобы не перехватывалось)
 router.get('/invitations/pending', async (req, res) => {
   try {
@@ -236,13 +301,14 @@ router.get('/:id', async (req, res) => {
       ORDER BY t.created_at DESC
     `, [id]);
 
-    // Участники: команда проекта (подтверждённые) + гости, приглашённые только сюда
+    // Участники: те из команды, кто видит проект, + гости, приглашённые только сюда
     const { rows: members } = await pool.query(`
       SELECT u.id, u.name, u.email, u.avatar, 'approved' AS status, tm.invited_at,
         tm.role, 'team' AS source, CASE WHEN tm.role = 'owner' THEN 1 ELSE 0 END AS is_owner
       FROM team_memberships tm
       JOIN users u ON u.id = tm.user_id
-      WHERE tm.team_id = $2 AND tm.status = 'approved'
+      JOIN projects p ON p.id = $1
+      WHERE tm.team_id = $2 AND tm.status = 'approved' AND ${teamSeesProjectSql('p', 'tm.user_id')}
       UNION ALL
       SELECT u.id, u.name, u.email, u.avatar, pm.status, pm.invited_at,
         'guest' AS role, 'project' AS source, 0 AS is_owner
@@ -254,7 +320,18 @@ router.get('/:id', async (req, res) => {
       )
     `, [id, access[0].team_id]);
 
-    res.json({ ...access[0], can_manage: isManager(access[0].my_role), statuses, tasks, members });
+    // Тем, кто ведёт проект, — вся команда с отметкой «видит проект» (для галочек доступа)
+    const canManage = isManager(access[0].my_role);
+    const { rows: teamRoster } = !canManage ? { rows: [] } : await pool.query(`
+      SELECT u.id, u.name, u.email, u.avatar, tm.role, ${teamSeesProjectSql('p', 'tm.user_id')} AS has_access
+      FROM team_memberships tm
+      JOIN users u ON u.id = tm.user_id
+      JOIN projects p ON p.id = $1
+      WHERE tm.team_id = $2 AND tm.status = 'approved'
+      ORDER BY CASE tm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.name
+    `, [id, access[0].team_id]);
+
+    res.json({ ...access[0], can_manage: canManage, statuses, tasks, members, team_roster: teamRoster });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: req.t('projectFetchError') });
@@ -349,7 +426,7 @@ router.post('/:id/invite', async (req, res) => {
       [projects[0].team_id, invitedUser.id]
     );
     if (inTeam.length > 0) {
-      return res.status(400).json({ error: req.t('alreadyInTeamHasAccess') });
+      return res.status(400).json({ error: req.t('alreadyInTeamUseAccess') });
     }
     const { rows: existing } = await pool.query(
       'SELECT id FROM project_members WHERE project_id = $1 AND user_id = $2', [id, invitedUser.id]
