@@ -16,8 +16,20 @@ HOST=taskmanager
 REMOTE=/var/www/taskmanager
 STAMP=$(date +%Y%m%d-%H%M%S)
 
-echo "1/6 Резервная копия на сервере: ~/taskmanager-backup-$STAMP.tgz"
+echo "1/6 Резервная копия на сервере: ~/taskmanager-backup-$STAMP.tgz и ~/taskmanager-db-$STAMP.sql.gz"
 ssh "$HOST" "cd $REMOTE && tar czf ~/taskmanager-backup-$STAMP.tgz --exclude=backend/node_modules --exclude=backend/storage backend frontend"
+# Дамп базы: npm run db:init ниже может переносить данные на новую схему (например, команды с ролями).
+# Параметры подключения берём из backend/.env на сервере. Пропустить: SKIP_DB_BACKUP=1 ./deploy.sh
+if [ "${SKIP_DB_BACKUP:-0}" != "1" ]; then
+  if ! ssh "$HOST" "cd $REMOTE/backend && set -a && . ./.env && set +a && \
+      if [ -n \"\$DATABASE_URL\" ]; then pg_dump \"\$DATABASE_URL\"; \
+      else PGPASSWORD=\"\$DB_PASSWORD\" pg_dump -h \"\${DB_HOST:-localhost}\" -p \"\${DB_PORT:-5432}\" -U \"\$DB_USER\" \"\$DB_NAME\"; fi \
+      | gzip > ~/taskmanager-db-$STAMP.sql.gz && test \$(gzip -dc ~/taskmanager-db-$STAMP.sql.gz | head -c 1 | wc -c) -eq 1"; then
+    echo "Не удалось сделать дамп базы (нужен pg_dump на сервере). Выкладка остановлена." >&2
+    echo "Если резервная копия базы уже есть — запустите: SKIP_DB_BACKUP=1 ./deploy.sh" >&2
+    exit 1
+  fi
+fi
 
 echo "2/6 Загрузка backend (без .env, node_modules и файлов задач)"
 rsync -az --exclude node_modules --exclude .env --exclude storage --exclude uploads --exclude .DS_Store \
@@ -41,4 +53,5 @@ rsync -az --delete --exclude .DS_Store frontend/build/ "$HOST:$REMOTE/frontend/"
 echo "6/6 Проверка"
 ssh "$HOST" "pm2 logs taskmanager-api --lines 6 --nostream --out"
 curl -fsS https://taskmanager.ecoestate.tv/api && echo
-echo "Готово. Откат: ssh $HOST 'cd $REMOTE && tar xzf ~/taskmanager-backup-$STAMP.tgz && cd backend && npm ci --omit=dev && pm2 restart taskmanager-api'"
+echo "Готово. Откат кода: ssh $HOST 'cd $REMOTE && tar xzf ~/taskmanager-backup-$STAMP.tgz && cd backend && npm ci --omit=dev && pm2 restart taskmanager-api'"
+echo "Дамп базы до выкладки: ~/taskmanager-db-$STAMP.sql.gz (восстановление: gunzip -c … | psql <база>)"
