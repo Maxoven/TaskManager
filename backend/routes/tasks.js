@@ -6,6 +6,7 @@ const pool = require('../config/database');
 const { withTransaction } = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const { sendTaskAssigned } = require('../services/email');
+const { canSeeProjectSql } = require('../services/access');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -57,7 +58,7 @@ const TASK_FIELDS = `
   t.id, t.project_id, t.status_id, t.title, t.description,
   t.start_date, t.end_date, t.created_at, t.updated_at,
   COALESCE((
-    SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email) ORDER BY u.name)
+    SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'avatar', u.avatar) ORDER BY u.name)
     FROM task_assignees ta JOIN users u ON ta.user_id = u.id
     WHERE ta.task_id = t.id
   ), '[]') AS assignees,
@@ -81,17 +82,13 @@ async function fetchTask(db, taskId) {
   return rows[0];
 }
 
-// Есть ли у пользователя доступ к проекту (владелец или подтверждённый участник)
+// Есть ли у пользователя доступ к проекту (участник команды проекта или гость).
+// Задачи создают и меняют все, у кого есть доступ, — и админы, и участники.
 async function hasProjectAccess(projectId, userId) {
-  const { rows } = await pool.query(`
-    SELECT 1 FROM projects p
-    WHERE p.id = $1 AND (
-      p.owner_id = $2 OR EXISTS (
-        SELECT 1 FROM project_members pm
-        WHERE pm.project_id = p.id AND pm.user_id = $2 AND pm.status = 'approved'
-      )
-    )
-  `, [projectId, userId]);
+  const { rows } = await pool.query(
+    `SELECT 1 FROM projects p WHERE p.id = $1 AND ${canSeeProjectSql('p', '$2')}`,
+    [projectId, userId]
+  );
   return rows.length > 0;
 }
 
@@ -136,20 +133,15 @@ async function saveDependencies(db, taskId, projectId, dependencies) {
   ]);
 }
 
-// Исполнителем может быть только владелец или подтверждённый участник проекта —
+// Исполнителем может быть только тот, у кого есть доступ к проекту (команда или гость) —
 // иначе через задачу можно узнать имя/email любого пользователя и слать ему письма
 async function saveAssignees(db, taskId, projectId, assigneeIds) {
   const ids = toIntArray(assigneeIds);
   if (ids.length === 0) return [];
   const { rows } = await db.query(`
     INSERT INTO task_assignees (task_id, user_id)
-    SELECT $1, u.id FROM users u
-    WHERE u.id = ANY($2::int[]) AND (
-      u.id = (SELECT owner_id FROM projects WHERE id = $3) OR EXISTS (
-        SELECT 1 FROM project_members pm
-        WHERE pm.project_id = $3 AND pm.user_id = u.id AND pm.status = 'approved'
-      )
-    )
+    SELECT $1, u.id FROM users u, projects p
+    WHERE p.id = $3 AND u.id = ANY($2::int[]) AND ${canSeeProjectSql('p', 'u.id')}
     ON CONFLICT DO NOTHING
     RETURNING user_id
   `, [taskId, ids, projectId]);
@@ -192,6 +184,7 @@ router.get('/my', async (req, res) => {
     const { rows } = await pool.query(`
       SELECT ${TASK_FIELDS},
         p.name AS project_name,
+        p.team_id,
         s.name AS status_name,
         -- Задача выполнена, если стоит в последней колонке проекта
         (s.id IS NOT NULL AND s.position = (

@@ -1,11 +1,13 @@
 import React, { useId, useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import apiError from '../utils/apiError';
+import Icon from './Icon';
 
 // Приглашение по email — одна и та же форма для команды и для отдельного проекта.
+// children — дополнительные поля (выбор роли в команде): тогда кнопка встаёт под ними.
 // onInvite(email) возвращает промис; ошибку показываем рядом с полем, а если
 // человек ещё не зарегистрирован — предлагаем ссылку на регистрацию, которую можно ему отправить.
-function InviteForm({ onInvite, label, hint, submitLabel, autoFocus = false }) {
+function InviteForm({ onInvite, label, hint, submitLabel, autoFocus = false, children }) {
   const { t } = useLanguage();
   const inputId = useId();
   const hintId = useId();
@@ -57,11 +59,24 @@ function InviteForm({ onInvite, label, hint, submitLabel, autoFocus = false }) {
           autoComplete="off"
           aria-describedby={hintId}
         />
-        <button type="submit" className="btn-primary" disabled={busy}>
-          {busy ? t('inviteSending') : submitLabel}
-        </button>
+        {!children && (
+          <button type="submit" className="btn-primary" disabled={busy}>
+            {busy ? t('inviteSending') : submitLabel}
+          </button>
+        )}
       </div>
       <p id={hintId} className="field-hint">{hint}</p>
+      {children && (
+        <>
+          {children}
+          <div className="invite-form-submit">
+            <button type="submit" className="btn-primary" disabled={busy}>
+              <Icon name="mail" size={16} />
+              {busy ? t('inviteSending') : submitLabel}
+            </button>
+          </div>
+        </>
+      )}
       {error && (
         <div className="invite-form-error" role="alert">
           <p className="field-error">{error}</p>

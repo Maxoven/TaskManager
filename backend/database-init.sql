@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS users (
     is_verified BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- Фото профиля: имя файла в storage/avatars (случайное — его нельзя угадать)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar VARCHAR(64);
 
 -- Токены подтверждения email
 CREATE TABLE IF NOT EXISTS email_verification_tokens (
@@ -51,17 +53,6 @@ CREATE TABLE IF NOT EXISTS project_members (
     status VARCHAR(50) NOT NULL DEFAULT 'pending',
     invited_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT unique_member UNIQUE (project_id, user_id)
-);
-
--- Глобальная команда — участники имеют доступ ко всем проектам владельца
-CREATE TABLE IF NOT EXISTS team_members (
-    id SERIAL PRIMARY KEY,
-    owner_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    member_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved')),
-    inviter_name VARCHAR(255),
-    invited_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT unique_team_member UNIQUE (owner_id, member_id)
 );
 
 -- Статусы (колонки канбана). Статусы по умолчанию создаёт backend при создании проекта,
@@ -157,7 +148,6 @@ CREATE TABLE IF NOT EXISTS task_reports (
 CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects(owner_id);
 CREATE INDEX IF NOT EXISTS idx_project_members_project ON project_members(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id);
-CREATE INDEX IF NOT EXISTS idx_team_members_member ON team_members(member_id);
 CREATE INDEX IF NOT EXISTS idx_statuses_project ON statuses(project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status_id);
@@ -183,3 +173,79 @@ CREATE TABLE IF NOT EXISTS ai_messages (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_ai_messages_user ON ai_messages(user_id, id);
+
+-- ─── Команды ───────────────────────────────────────────────────────────────
+-- Пользователь может состоять в нескольких командах и переключаться между ними.
+-- Проекты принадлежат команде; доступ к проекту даёт членство в его команде.
+-- Роли: owner — создатель (всё, включая удаление команды),
+--       admin — создаёт и ведёт проекты, приглашает людей и меняет их роли,
+--       member — видит проекты команды, создаёт и меняет задачи.
+CREATE TABLE IF NOT EXISTS teams (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    created_by INT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS team_memberships (
+    id SERIAL PRIMARY KEY,
+    team_id INT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(10) NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member')),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved')),
+    invited_by INT REFERENCES users(id) ON DELETE SET NULL,
+    invited_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT unique_team_membership UNIQUE (team_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_team_memberships_user ON team_memberships(user_id);
+
+-- owner_id проекта остаётся как «кто создал»; права определяет роль в команде
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS team_id INT REFERENCES teams(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_projects_team ON projects(team_id);
+
+-- Переход со старой модели «одна глобальная команда на владельца» (таблица team_members).
+-- Каждый владелец проектов получает свою команду; его проекты переходят в неё,
+-- прежние участники становятся участниками (member) с теми же правами, что были.
+-- Прямые приглашения в отдельный проект (project_members) остаются гостевым доступом.
+-- Повторный запуск ничего не меняет: старая таблица переименовывается в team_members_legacy.
+DO $$
+DECLARE
+    u RECORD;
+    new_team INT;
+    has_legacy BOOLEAN := to_regclass('public.team_members') IS NOT NULL;
+BEGIN
+    -- Запрос собирается строкой: после переименования team_members его нельзя упоминать напрямую
+    FOR u IN EXECUTE
+        'SELECT us.id, us.name, us.language FROM users us
+         WHERE EXISTS (SELECT 1 FROM projects p WHERE p.owner_id = us.id AND p.team_id IS NULL)'
+        || CASE WHEN has_legacy
+                THEN ' OR EXISTS (SELECT 1 FROM team_members tm WHERE tm.owner_id = us.id)'
+                ELSE '' END
+        || ' ORDER BY us.id'
+    LOOP
+        INSERT INTO teams (name, created_by)
+        VALUES (CASE WHEN u.language = 'en' THEN u.name || '''s team' ELSE 'Команда ' || u.name END, u.id)
+        RETURNING id INTO new_team;
+        INSERT INTO team_memberships (team_id, user_id, role, status)
+        VALUES (new_team, u.id, 'owner', 'approved');
+        UPDATE projects SET team_id = new_team WHERE owner_id = u.id AND team_id IS NULL;
+
+        IF has_legacy THEN
+            EXECUTE 'INSERT INTO team_memberships (team_id, user_id, role, status, invited_by, invited_at)
+                     SELECT $1, member_id, ''member'', status, owner_id, invited_at
+                     FROM team_members WHERE owner_id = $2
+                     ON CONFLICT (team_id, user_id) DO NOTHING'
+                USING new_team, u.id;
+            -- Доступ, выданный через команду, теперь даёт членство — гостевые записи не нужны
+            EXECUTE 'DELETE FROM project_members pm
+                     USING projects p, team_members tm
+                     WHERE pm.project_id = p.id AND p.team_id = $1
+                       AND tm.owner_id = $2 AND tm.member_id = pm.user_id AND tm.status = ''approved'''
+                USING new_team, u.id;
+        END IF;
+    END LOOP;
+
+    IF has_legacy THEN
+        ALTER TABLE team_members RENAME TO team_members_legacy;
+    END IF;
+END $$;

@@ -247,7 +247,7 @@ function TaskModal({ task, members, statuses, defaultStatusId, onSave, onDelete,
             {members.map(member => (
               <label key={member.id} className="assignee-checkbox">
                 <input type="checkbox" checked={formData.assigneeIds.includes(member.id)} onChange={() => handleAssigneeToggle(member.id)} />
-                <Avatar name={member.name} size="xs" aria-hidden="true" />
+                <Avatar name={member.name} src={member.avatar} size="xs" aria-hidden="true" />
                 <span>{member.name}</span>
               </label>
             ))}

@@ -3,9 +3,11 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useLanguage } from '../context/LanguageContext';
 import { useFeedback } from '../context/FeedbackContext';
+import { useTeams, SHARED, canManageRole } from '../context/TeamContext';
+import { ROLE_LABEL_KEYS } from './TeamSwitcher';
 import AppHeader from './AppHeader';
 import Modal from './Modal';
-import InviteForm from './InviteForm';
+import TeamSettings from './TeamSettings';
 import Icon from './Icon';
 import Avatar from './Avatar';
 import { DashboardSkeleton } from './Skeleton';
@@ -14,8 +16,7 @@ import apiError from '../utils/apiError';
 import {
   getProjects, createProject, updateProject, deleteProject,
   getPendingInvitations, respondToInvitation, reorderProjects, getMyTasks,
-  getTeam, addTeamMember, removeTeamMember, getTeamInvitations, respondToTeamInvitation,
-  getTeamMemberships, leaveTeam
+  respondToTeamInvitation
 } from '../services/api';
 import './Dashboard.css';
 
@@ -43,7 +44,7 @@ function ProjectStats({ project }) {
 }
 
 // Форма проекта — одна для создания и редактирования
-function ProjectFormModal({ project, onSubmit, onClose }) {
+function ProjectFormModal({ project, onSubmit, onClose, teamName }) {
   const { t } = useLanguage();
   const [form, setForm] = useState({ name: project?.name || '', description: project?.description || '' });
   const [saving, setSaving] = useState(false);
@@ -63,7 +64,7 @@ function ProjectFormModal({ project, onSubmit, onClose }) {
   return (
     <Modal
       title={project ? t('editProjectTitle') : t('createProjectTitle')}
-      description={project ? undefined : t('createProjectIntro')}
+      description={project ? undefined : t('createProjectIntro', { team: teamName || '' })}
       onClose={onClose}
       className="project-form-modal"
     >
@@ -90,16 +91,35 @@ function ProjectFormModal({ project, onSubmit, onClose }) {
   );
 }
 
+// Карточка проекта; кнопки «Изменить» и «Удалить» — только тем, кто ведёт проекты команды
+function ProjectCard({ project, canManage, onEdit, onDelete }) {
+  const { t } = useLanguage();
+  const navigate = useNavigate();
+  return (
+    <article className={`project-card ${canManage ? '' : 'project-card-member'}`} onClick={() => navigate(`/project/${project.id}`)}>
+      <div className="project-card-header">
+        <h3><Link to={`/project/${project.id}`} className="project-card-link" onClick={(e) => e.stopPropagation()}>{project.name}</Link></h3>
+      </div>
+      {project.description && <p className="project-card-desc">{project.description}</p>}
+      <ProjectStats project={project} />
+      {canManage && (
+        <div className="project-card-actions" onClick={(e) => e.stopPropagation()}>
+          <button type="button" onClick={() => onEdit(project)} className="btn-small" aria-label={t('editProjectAria', { name: project.name })}><Icon name="pencil" size={14} />{t('editShort')}</button>
+          <button type="button" onClick={() => onDelete(project)} className="btn-small btn-small-danger" aria-label={t('deleteProjectAria', { name: project.name })}><Icon name="trash" size={14} />{t('delete')}</button>
+        </div>
+      )}
+    </article>
+  );
+}
+
 function Dashboard({ user, onLogout }) {
   const { t, lang } = useLanguage();
   const { notify, confirm } = useFeedback();
+  const { invitations: teamInvitations, current, currentTeam, selectTeam, refresh: refreshTeams, loaded: teamsLoaded } = useTeams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [projects, setProjects] = useState([]);
   const [invitations, setInvitations] = useState([]);
   const [myTasks, setMyTasks] = useState([]);
-  const [team, setTeam] = useState([]);
-  const [teamInvitations, setTeamInvitations] = useState([]);
-  const [memberships, setMemberships] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editProject, setEditProject] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -111,25 +131,30 @@ function Dashboard({ user, onLogout }) {
   const [myTasksTab, setMyTasksTab] = useState('active');
   const navigate = useNavigate();
 
-  // Вкладка хранится в адресе (?tab=team), чтобы на неё можно было сослаться и вернуться кнопкой «Назад»
+  const isShared = current === SHARED;
+  const myRole = currentTeam?.role;
+  const canManage = canManageRole(myRole);
+
+  // Вкладка хранится в адресе (?tab=team), чтобы на неё можно было сослаться и вернуться кнопкой «Назад».
+  // В разделе «Отдельные проекты» команды нет — и вкладки «Команда» тоже.
+  const tabs = isShared ? TABS.filter(tab => tab !== 'team') : TABS;
   const tabParam = searchParams.get('tab');
-  const activeTab = TABS.includes(tabParam) ? tabParam : 'projects';
+  const activeTab = tabs.includes(tabParam) ? tabParam : 'projects';
   const setActiveTab = (tab) => setSearchParams(tab === 'projects' ? {} : { tab });
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadData(); }, []);
+  // Сменили команду — выходим из режима сортировки, он относится к прежнему списку
+  useEffect(() => { setSortMode(false); }, [current]);
 
   const loadData = async () => {
     try {
-      const [projectsRes, invitationsRes, tasksRes, teamRes, teamInvRes, membershipsRes] = await Promise.all([
-        getProjects(), getPendingInvitations(), getMyTasks(), getTeam(), getTeamInvitations(), getTeamMemberships()
+      const [projectsRes, invitationsRes, tasksRes] = await Promise.all([
+        getProjects(), getPendingInvitations(), getMyTasks()
       ]);
       setProjects(projectsRes.data);
       setInvitations(invitationsRes.data);
       setMyTasks(tasksRes.data);
-      setTeam(teamRes.data);
-      setTeamInvitations(teamInvRes.data);
-      setMemberships(membershipsRes.data);
       setLoadError('');
     } catch (error) {
       // Раньше при ошибке показывалась пустая страница «у вас нет проектов» — теперь говорим как есть
@@ -139,12 +164,18 @@ function Dashboard({ user, onLogout }) {
     }
   };
 
+  // После изменений в командах обновляем и список команд в шапке, и проекты
+  const reloadAll = async () => {
+    await Promise.all([loadData(), refreshTeams().catch(() => {})]);
+  };
+
   const retryLoad = () => { setLoading(true); loadData(); };
 
   const handleCreateProject = async (form) => {
-    const response = await createProject(form);
+    const response = await createProject({ ...form, teamId: current });
     setShowCreateModal(false);
     notify.success(t('projectCreatedToast', { name: response.data.name }));
+    refreshTeams().catch(() => {});
     // Сразу открываем новый проект — следующим шагом пользователь добавляет задачи
     navigate(`/project/${response.data.id}`);
   };
@@ -169,7 +200,7 @@ function Dashboard({ user, onLogout }) {
     try {
       await deleteProject(project.id);
       notify.success(t('projectDeletedToast', { name: project.name }));
-      loadData();
+      reloadAll();
     } catch (error) {
       notify.error(apiError(error, t, 'projectDeleteError'));
     }
@@ -182,7 +213,7 @@ function Dashboard({ user, onLogout }) {
       notify.success(action === 'approve'
         ? t('inviteAcceptedToast', { name: inv.name })
         : t('inviteDeclinedToast'));
-      await loadData();
+      await reloadAll();
     } catch (error) {
       notify.error(apiError(error, t, 'inviteRespondError'));
     } finally {
@@ -191,13 +222,17 @@ function Dashboard({ user, onLogout }) {
   };
 
   const handleTeamInvitationResponse = async (inv, action) => {
-    setBusyKey(`team-inv-${inv.owner_id}`);
+    setBusyKey(`team-inv-${inv.team_id}`);
     try {
-      await respondToTeamInvitation(inv.owner_id, action);
-      notify.success(action === 'approve'
-        ? t('teamInviteAcceptedToast', { name: inv.owner_name })
-        : t('inviteDeclinedToast'));
-      await loadData();
+      await respondToTeamInvitation(inv.team_id, action);
+      await reloadAll();
+      if (action === 'approve') {
+        // Сразу показываем команду, в которую человек вступил
+        selectTeam(inv.team_id);
+        notify.success(t('teamJoinedToast', { name: inv.team_name }));
+      } else {
+        notify.success(t('inviteDeclinedToast'));
+      }
     } catch (error) {
       notify.error(apiError(error, t, 'inviteRespondError'));
     } finally {
@@ -205,8 +240,13 @@ function Dashboard({ user, onLogout }) {
     }
   };
 
+  // Проекты и задачи выбранной команды (или отдельные проекты с гостевым доступом)
+  const scopeProjects = projects.filter(p => (isShared ? p.my_role === 'guest' : p.team_id === current && p.my_role !== 'guest'));
+  const scopeIds = new Set(scopeProjects.map(p => p.id));
+  const scopeTasks = myTasks.filter(task => scopeIds.has(task.project_id));
+
   const handleStartSort = () => {
-    setSortedProjects(projects.filter(p => p.owner_id === user?.id));
+    setSortedProjects(scopeProjects);
     setSortMode(true);
   };
 
@@ -232,55 +272,7 @@ function Dashboard({ user, onLogout }) {
     }
   };
 
-  const handleAddTeamMember = async (email) => {
-    const res = await addTeamMember(email);
-    notify.success(t('teamInviteSent', { name: res.data.member.name }));
-    loadData();
-  };
-
-  const handleRemoveTeamMember = async (member) => {
-    const pending = member.status === 'pending';
-    const ok = await confirm(pending
-      ? {
-        title: t('cancelTeamInviteTitle', { name: member.name }),
-        message: t('cancelTeamInviteMessage'),
-        confirmLabel: t('cancelInviteBtn'),
-        cancelLabel: t('keepBtn')
-      }
-      : {
-        title: t('removeFromTeamTitleQ', { name: member.name }),
-        message: t('removeFromTeamMessage'),
-        confirmLabel: t('removeFromTeamBtn'),
-        danger: true
-      });
-    if (!ok) return;
-    try {
-      await removeTeamMember(member.id);
-      notify.success(pending ? t('inviteCancelledToast') : t('removedFromTeamToast', { name: member.name }));
-      loadData();
-    } catch (error) {
-      notify.error(apiError(error, t, 'teamRemoveError'));
-    }
-  };
-
-  const handleLeaveTeam = async (membership) => {
-    const ok = await confirm({
-      title: t('leaveTeamTitle', { name: membership.owner_name }),
-      message: t('leaveTeamMessage', { name: membership.owner_name }),
-      confirmLabel: t('leaveTeamBtn'),
-      danger: true
-    });
-    if (!ok) return;
-    try {
-      await leaveTeam(membership.owner_id);
-      notify.success(t('leftTeamToast', { name: membership.owner_name }));
-      loadData();
-    } catch (error) {
-      notify.error(apiError(error, t, 'leaveError'));
-    }
-  };
-
-  if (loading) {
+  if (loading || !teamsLoaded) {
     return (
       <div className="dashboard">
         <AppHeader user={user} onLogout={onLogout} />
@@ -305,21 +297,21 @@ function Dashboard({ user, onLogout }) {
     );
   }
 
-  const myProjects = projects.filter(p => p.owner_id === user?.id);
-  const memberProjects = projects.filter(p => p.owner_id !== user?.id);
-  const activeTasks = myTasks.filter(task => !task.is_done);
-  const doneTasks = myTasks.filter(task => task.is_done);
+  const activeTasks = scopeTasks.filter(task => !task.is_done);
+  const doneTasks = scopeTasks.filter(task => task.is_done);
   const overdueCount = activeTasks.filter(task => deadlineState(task) === 'overdue').length;
-  const approvedTeam = team.filter(m => m.status === 'approved');
 
-  // Чужие проекты — группируем по владельцу, сохраняя порядок владельца
-  const teamOwnerIds = new Set(memberships.map(m => m.owner_id));
-  const byOwner = [];
-  memberProjects.forEach(p => {
-    let group = byOwner.find(g => g.ownerId === p.owner_id);
-    if (!group) { group = { ownerId: p.owner_id, name: p.owner_name, projects: [] }; byOwner.push(group); }
-    group.projects.push(p);
-  });
+  // Гостевые проекты группируем по команде, которой они принадлежат
+  const sharedGroups = [];
+  if (isShared) {
+    scopeProjects.forEach(p => {
+      let group = sharedGroups.find(g => g.teamId === p.team_id);
+      if (!group) { group = { teamId: p.team_id, name: p.team_name, projects: [] }; sharedGroups.push(group); }
+      group.projects.push(p);
+    });
+  }
+
+  const openCreate = () => setShowCreateModal(true);
 
   return (
     <div className="dashboard">
@@ -330,7 +322,50 @@ function Dashboard({ user, onLogout }) {
         <p>{t('dashboardSubtitle', { active: activeTasks.length, overdue: overdueCount })}</p>
       </div>
 
-      {/* Приглашения в проекты */}
+      {/* Где я сейчас и что мне здесь можно — чтобы скрытые кнопки не удивляли */}
+      {isShared ? (
+        <p className="team-context">
+          <span className="team-context-icon" aria-hidden="true"><Icon name="folder" size={16} /></span>
+          <span>{t('sharedContext')}</span>
+        </p>
+      ) : currentTeam && (
+        <p className="team-context">
+          <Avatar name={currentTeam.name} size="sm" square aria-hidden="true" />
+          <span>
+            {t('teamContext', { team: currentTeam.name })}{' '}
+            <strong className={`role-chip role-chip-${myRole}`}>{t(ROLE_LABEL_KEYS[myRole])}</strong>
+            {' — '}{t(`roleShort_${myRole}`)}
+          </span>
+        </p>
+      )}
+
+      {/* Приглашения в команды */}
+      {teamInvitations.length > 0 && (
+        <section className="invitations-section" aria-labelledby="team-invitations-title">
+          <h2 id="team-invitations-title">{t('teamInvitationsTitle')}</h2>
+          <div className="invitations-list">
+            {teamInvitations.map(inv => (
+              <div key={inv.team_id} className="invitation-card team-invitation-card">
+                <Avatar name={inv.team_name} size="lg" square className="invitation-avatar" aria-hidden="true" />
+                <div className="invitation-body">
+                  <h3>{t('teamInviteHeading', { team: inv.team_name })}</h3>
+                  <p>
+                    {t('teamInviteFrom', { name: inv.inviter_name || '—' })}{' '}
+                    <strong className={`role-chip role-chip-${inv.role}`}>{t(ROLE_LABEL_KEYS[inv.role])}</strong>
+                  </p>
+                  <p className="invitation-desc">{t(`roleLong_${inv.role}`)}</p>
+                </div>
+                <div className="invitation-actions">
+                  <button type="button" disabled={busyKey === `team-inv-${inv.team_id}`} onClick={() => handleTeamInvitationResponse(inv, 'approve')} className="btn-primary">{t('inviteAccept')}</button>
+                  <button type="button" disabled={busyKey === `team-inv-${inv.team_id}`} onClick={() => handleTeamInvitationResponse(inv, 'reject')} className="btn-secondary">{t('inviteReject')}</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Приглашения в отдельные проекты */}
       {invitations.length > 0 && (
         <section className="invitations-section" aria-labelledby="project-invitations-title">
           <h2 id="project-invitations-title">{t('projectInvitationsTitle')}</h2>
@@ -340,34 +375,12 @@ function Dashboard({ user, onLogout }) {
                 <span className="invitation-icon" aria-hidden="true"><Icon name="folder" size={20} /></span>
                 <div className="invitation-body">
                   <h3>{inv.name}</h3>
-                  <p>{t('projectInviteText', { name: inv.owner_name })}</p>
+                  <p>{t('projectInviteText', { name: inv.owner_name, team: inv.team_name || '' })}</p>
                   {inv.description && <p className="invitation-desc">{inv.description}</p>}
                 </div>
                 <div className="invitation-actions">
                   <button type="button" disabled={busyKey === `project-inv-${inv.id}`} onClick={() => handleInvitationResponse(inv, 'approve')} className="btn-primary">{t('inviteAccept')}</button>
                   <button type="button" disabled={busyKey === `project-inv-${inv.id}`} onClick={() => handleInvitationResponse(inv, 'reject')} className="btn-secondary">{t('inviteReject')}</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Приглашения в команду */}
-      {teamInvitations.length > 0 && (
-        <section className="invitations-section" aria-labelledby="team-invitations-title">
-          <h2 id="team-invitations-title">{t('teamInvitationsTitle')}</h2>
-          <div className="invitations-list">
-            {teamInvitations.map(inv => (
-              <div key={inv.owner_id} className="invitation-card team-invitation-card">
-                <span className="invitation-icon" aria-hidden="true"><Icon name="users" size={20} /></span>
-                <div className="invitation-body">
-                  <h3>{t('teamInviteHeading', { name: inv.owner_name })}</h3>
-                  <p>{t('teamInviteExplain', { name: inv.owner_name })}</p>
-                </div>
-                <div className="invitation-actions">
-                  <button type="button" disabled={busyKey === `team-inv-${inv.owner_id}`} onClick={() => handleTeamInvitationResponse(inv, 'approve')} className="btn-primary">{t('inviteAccept')}</button>
-                  <button type="button" disabled={busyKey === `team-inv-${inv.owner_id}`} onClick={() => handleTeamInvitationResponse(inv, 'reject')} className="btn-secondary">{t('inviteReject')}</button>
                 </div>
               </div>
             ))}
@@ -385,11 +398,13 @@ function Dashboard({ user, onLogout }) {
           {t('tabMyTasks')}
           {overdueCount > 0 && <span className="count-badge count-badge-danger" title={t('overdueBadgeTitle')}>{overdueCount}</span>}
         </button>
-        <button type="button" className={`tab-btn segmented-btn ${activeTab === 'team' ? 'active' : ''}`} aria-current={activeTab === 'team' ? 'page' : undefined} onClick={() => setActiveTab('team')}>
-          <Icon name="users" />
-          {t('tabTeam')}
-          {approvedTeam.length > 0 && <span className="count-badge" title={t('teamBadgeTitle')}>{approvedTeam.length}</span>}
-        </button>
+        {!isShared && (
+          <button type="button" className={`tab-btn segmented-btn ${activeTab === 'team' ? 'active' : ''}`} aria-current={activeTab === 'team' ? 'page' : undefined} onClick={() => setActiveTab('team')}>
+            <Icon name="users" />
+            {t('tabTeam')}
+            {currentTeam?.members_count > 0 && <span className="count-badge" title={t('teamBadgeTitle')}>{currentTeam.members_count}</span>}
+          </button>
+        )}
       </nav>
 
       {activeTab === 'projects' && (
@@ -430,64 +445,55 @@ function Dashboard({ user, onLogout }) {
                 </Droppable>
               </DragDropContext>
             </>
-          ) : (
+          ) : isShared ? (
             <>
               <div className="section-header">
-                <h2>{t('myProjects')}</h2>
-                <div className="section-actions">
-                  {myProjects.length > 1 && (
-                    <button type="button" onClick={handleStartSort} className="btn-secondary"><Icon name="reorder" />{t('reorderBtn')}</button>
-                  )}
-                  <button type="button" onClick={() => setShowCreateModal(true)} className="btn-primary"><Icon name="plus" />{t('createProject')}</button>
-                </div>
+                <h2>{t('sharedProjectsTitle')}</h2>
               </div>
-
-              {/* Мои проекты */}
-              {myProjects.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-state-icon" aria-hidden="true"><Icon name="folder" size={26} /></div>
-                  <p className="empty-state-title">{t('noProjects')}</p>
-                  <p>{t('noProjectsHint')}</p>
-                  <button type="button" onClick={() => setShowCreateModal(true)} className="btn-primary"><Icon name="plus" />{t('createProject')}</button>
-                </div>
-              ) : (
-                <div className="projects-grid">
-                  {myProjects.map((project) => (
-                    <article key={project.id} className="project-card" onClick={() => navigate(`/project/${project.id}`)}>
-                      <div className="project-card-header">
-                        <h3><Link to={`/project/${project.id}`} className="project-card-link" onClick={(e) => e.stopPropagation()}>{project.name}</Link></h3>
-                      </div>
-                      {project.description && <p className="project-card-desc">{project.description}</p>}
-                      <ProjectStats project={project} />
-                      <div className="project-card-actions" onClick={(e) => e.stopPropagation()}>
-                        <button type="button" onClick={() => setEditProject(project)} className="btn-small" aria-label={t('editProjectAria', { name: project.name })}><Icon name="pencil" size={14} />{t('editShort')}</button>
-                        <button type="button" onClick={() => handleDeleteProject(project)} className="btn-small btn-small-danger" aria-label={t('deleteProjectAria', { name: project.name })}><Icon name="trash" size={14} />{t('delete')}</button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-
-              {/* Чужие проекты, к которым у меня есть доступ */}
-              {byOwner.map(group => (
-                <section key={group.ownerId} className="owner-group">
-                  <h3 className="owner-group-title"><Avatar name={group.name} size="sm" aria-hidden="true" />{t('projectsOfOwner', { name: group.name })}</h3>
-                  <p className="owner-group-hint">
-                    {teamOwnerIds.has(group.ownerId) ? t('ownerGroupTeamHint') : t('ownerGroupInvitedHint')}
-                  </p>
+              <p className="section-intro">{t('sharedProjectsIntro')}</p>
+              {sharedGroups.map(group => (
+                <section key={group.teamId} className="owner-group">
+                  <h3 className="owner-group-title"><Avatar name={group.name} size="sm" square aria-hidden="true" />{t('sharedGroupTitle', { team: group.name })}</h3>
                   <div className="projects-grid">
-                    {group.projects.map(project => (
-                      <article key={project.id} className="project-card project-card-member" onClick={() => navigate(`/project/${project.id}`)}>
-                        <div className="project-card-header">
-                          <h3><Link to={`/project/${project.id}`} className="project-card-link" onClick={(e) => e.stopPropagation()}>{project.name}</Link></h3>
-                        </div>
-                        {project.description && <p className="project-card-desc">{project.description}</p>}
-                        <ProjectStats project={project} />
-                      </article>
-                    ))}
+                    {group.projects.map(project => <ProjectCard key={project.id} project={project} canManage={false} />)}
                   </div>
                 </section>
               ))}
+            </>
+          ) : (
+            <>
+              <div className="section-header">
+                <h2>{t('teamProjectsTitle')}</h2>
+                {canManage && (
+                  <div className="section-actions">
+                    {scopeProjects.length > 1 && (
+                      <button type="button" onClick={handleStartSort} className="btn-secondary"><Icon name="reorder" />{t('reorderBtn')}</button>
+                    )}
+                    <button type="button" onClick={openCreate} className="btn-primary"><Icon name="plus" />{t('createProject')}</button>
+                  </div>
+                )}
+              </div>
+              {!canManage && (
+                <p className="role-note">
+                  <Icon name="info" size={16} />
+                  <span>{t('memberProjectsNote')}</span>
+                </p>
+              )}
+
+              {scopeProjects.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon" aria-hidden="true"><Icon name="folder" size={26} /></div>
+                  <p className="empty-state-title">{t('noTeamProjects')}</p>
+                  <p>{canManage ? t('noProjectsHint') : t('noTeamProjectsMemberHint')}</p>
+                  {canManage && <button type="button" onClick={openCreate} className="btn-primary"><Icon name="plus" />{t('createProject')}</button>}
+                </div>
+              ) : (
+                <div className="projects-grid">
+                  {scopeProjects.map(project => (
+                    <ProjectCard key={project.id} project={project} canManage={canManage} onEdit={setEditProject} onDelete={handleDeleteProject} />
+                  ))}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -497,7 +503,7 @@ function Dashboard({ user, onLogout }) {
         const shownTasks = myTasksTab === 'active' ? activeTasks : doneTasks;
         return (
           <div className="mytasks-section view-enter">
-            <p className="section-intro">{t('myTasksIntro')}</p>
+            <p className="section-intro">{isShared ? t('myTasksIntroShared') : t('myTasksIntroTeam', { team: currentTeam?.name || '' })}</p>
             <div className="mytasks-subtabs">
               <button type="button" className={`subtab-btn ${myTasksTab === 'active' ? 'active' : ''}`} aria-pressed={myTasksTab === 'active'} onClick={() => setMyTasksTab('active')}>
                 {t('myTasksActive')} <span className="count-badge">{activeTasks.length}</span>
@@ -549,70 +555,14 @@ function Dashboard({ user, onLogout }) {
         );
       })()}
 
-      {activeTab === 'team' && (
-        <div className="team-section view-enter">
-          <h2>{t('myTeamTitle')}</h2>
-          <p className="team-hint">{t('myTeamHint')}</p>
-          <p className="team-hint">{t('myTeamVsProjectHint')}</p>
-          <div className="team-add-form">
-            <InviteForm
-              onInvite={handleAddTeamMember}
-              label={t('addMember')}
-              hint={t('inviteMustBeRegisteredHint')}
-              submitLabel={t('addMemberBtn')}
-            />
-          </div>
-          {team.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-icon" aria-hidden="true"><Icon name="users" size={26} /></div>
-              <p className="empty-state-title">{t('teamEmpty')}</p>
-              <p>{t('teamEmptyHint')}</p>
-            </div>
-          ) : (
-            <ul className="team-list">
-              {team.map(member => (
-                <li key={member.id} className={`team-member-card ${member.status === 'pending' ? 'team-member-pending' : ''}`}>
-                  <Avatar name={member.name} size="lg" muted={member.status === 'pending'} className="team-member-avatar" aria-hidden="true" />
-                  <div className="team-member-info">
-                    <span className="team-member-name">
-                      {member.name}
-                      {member.status === 'pending' && <span className="pending-badge chip chip-pending"><Icon name="clock" size={12} />{t('teamPending')}</span>}
-                    </span>
-                    <span className="team-member-email">{member.email}</span>
-                  </div>
-                  <button type="button" onClick={() => handleRemoveTeamMember(member)} className="btn-small btn-small-danger">
-                    {member.status === 'pending' ? t('cancelInviteBtn') : t('removeFromTeamBtn')}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {memberships.length > 0 && (
-            <section className="team-memberships" aria-labelledby="team-memberships-title">
-              <h2 id="team-memberships-title">{t('teamMembershipsTitle')}</h2>
-              <p className="team-hint">{t('teamMembershipsHint')}</p>
-              <ul className="team-list">
-                {memberships.map(m => (
-                  <li key={m.owner_id} className="team-member-card">
-                    <Avatar name={m.owner_name} size="lg" className="team-member-avatar" aria-hidden="true" />
-                    <div className="team-member-info">
-                      <span className="team-member-name">{m.owner_name}</span>
-                      <span className="team-member-email">{m.owner_email} · {t('teamProjectsCount', { count: m.projects_count })}</span>
-                    </div>
-                    <button type="button" onClick={() => handleLeaveTeam(m)} className="btn-small btn-small-danger">{t('leaveTeamBtn')}</button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </div>
+      {activeTab === 'team' && currentTeam && (
+        <TeamSettings key={currentTeam.id} teamId={currentTeam.id} user={user} onChanged={reloadAll} />
       )}
 
       </main>
 
       {showCreateModal && (
-        <ProjectFormModal onSubmit={handleCreateProject} onClose={() => setShowCreateModal(false)} />
+        <ProjectFormModal onSubmit={handleCreateProject} onClose={() => setShowCreateModal(false)} teamName={currentTeam?.name} />
       )}
 
       {editProject && (

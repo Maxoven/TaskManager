@@ -405,6 +405,22 @@
   max-width: 580px;
 }
 
+/* Группы: «Команда …» и «Гости проекта» */
+.people-group-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.people-group-hint {
+  margin: 0 0 var(--space-5);
+}
+
+.people-list + .people-group-hint {
+  margin-top: calc(-1 * var(--space-3));
+}
+
 .people-list {
   margin-bottom: var(--space-5);
   border: 1px solid var(--color-border);

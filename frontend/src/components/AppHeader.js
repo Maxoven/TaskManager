@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../context/LanguageContext';
 import AccountMenu from './AccountMenu';
+import TeamSwitcher from './TeamSwitcher';
 import Icon from './Icon';
 import AssistantBar from './AssistantBar';
 import './AppHeader.css';
@@ -17,7 +18,7 @@ export function Logo({ withText = true }) {
   );
 }
 
-// Единая шапка приложения: логотип, (опционально) контент по центру, меню аккаунта, выход.
+// Единая шапка приложения: логотип, переключатель команд, (опционально) контент по центру, меню аккаунта, выход.
 // Под шапкой, в потоке страницы, — строка ИИ-ассистента.
 function AppHeader({ user, onLogout, children, wide = false }) {
   const { t } = useLanguage();
@@ -28,6 +29,7 @@ function AppHeader({ user, onLogout, children, wide = false }) {
           <Link to="/" className="app-header-logo" title="Task Manager">
             <Logo />
           </Link>
+          {user && <TeamSwitcher />}
           {children && <div className="app-header-center">{children}</div>}
           <div className="app-header-right">
             {user && <AccountMenu user={user} />}
