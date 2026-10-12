@@ -1,6 +1,6 @@
 // Перенос данных из старой MySQL-базы в PostgreSQL (одноразово).
 //
-// Запуск (схема в Postgres уже должна быть создана: npm run db:init):
+// Запуск (схема в Postgres уже должна быть создана: npm run db:init; после переноса — ещё раз npm run db:init):
 //   npm install --no-save mysql2
 //   MYSQL_HOST=127.0.0.1 MYSQL_USER=taskuser MYSQL_PASSWORD=... MYSQL_DATABASE=taskmanager \
 //     node scripts/migrate-from-mysql.js [--dry-run] [--force]
@@ -65,6 +65,20 @@ async function main() {
   console.log('MySQL:', TABLES.map(t => `${t}=${data[t].length}`).join(', '));
   if (DRY_RUN) return;
 
+  // Старая «глобальная команда» переносится через промежуточную таблицу team_members:
+  // повторный npm run db:init превратит её в команды с ролями (см. database-init.sql).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS team_members (
+      id SERIAL PRIMARY KEY,
+      owner_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      member_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      inviter_name VARCHAR(255),
+      invited_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT unique_team_member UNIQUE (owner_id, member_id)
+    )
+  `);
+
   const { rows: existingTables } = await pool.query(
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
   );
@@ -123,7 +137,7 @@ async function main() {
     }
 
     await client.query('COMMIT');
-    console.log('✅ Перенос завершён');
+    console.log('✅ Перенос завершён. Теперь запустите npm run db:init — проекты и команды перейдут на новую модель команд.');
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

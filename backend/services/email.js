@@ -259,34 +259,42 @@ async function sendProjectInvitation(to, inviterName, projectName) {
 }
 
 // ─── Приглашение в команду ────────────────────────────────────────────────────
-async function sendTeamInvitation(to, inviterName) {
+// role: 'admin' — ведёт проекты и приглашает людей; 'member' — работает с задачами
+async function sendTeamInvitation(to, inviterName, teamName, role) {
   const lang = normalizeLang(to.language);
   const name = escapeHtml(to.name);
   const inviter = escapeHtml(inviterName);
+  const team = escapeHtml(teamName);
   const href = `${FRONTEND_URL}/`;
   const tpl = lang === 'en'
     ? {
-        subject: `${inviterName} invites you to their team`,
+        subject: `${inviterName} invites you to the team "${teamName}"`,
         title: 'Team invitation',
         color: '#7b1fa2',
         paragraphs: [
           `Hi, ${name}!`,
-          `<strong>${inviter}</strong> invites you to their team.`,
-          `Once you accept, you will automatically get access to all of ${inviter}'s projects.`
+          `<strong>${inviter}</strong> invites you to the team <strong>"${team}"</strong> as ${role === 'admin' ? '<strong>an admin</strong>' : '<strong>a member</strong>'}.`,
+          role === 'admin'
+            ? 'Admins create and manage the team\'s projects and invite people.'
+            : 'Members see the team\'s projects and create and update tasks in them.',
+          'Sign in to Task Manager to accept or decline the invitation:'
         ],
-        button: { href, label: 'Accept invitation' },
+        button: { href, label: 'Open Task Manager' },
         note: "If you weren't expecting this invitation, just ignore this email."
       }
     : {
-        subject: `${inviterName} приглашает вас в свою команду`,
+        subject: `${inviterName} приглашает вас в команду «${teamName}»`,
         title: 'Приглашение в команду',
         color: '#7b1fa2',
         paragraphs: [
           `Привет, ${name}!`,
-          `<strong>${inviter}</strong> приглашает вас в свою команду.`,
-          `После принятия вы автоматически получите доступ ко всем проектам ${inviter}.`
+          `<strong>${inviter}</strong> приглашает вас в команду <strong>«${team}»</strong> с ролью <strong>${role === 'admin' ? 'администратор' : 'участник'}</strong>.`,
+          role === 'admin'
+            ? 'Администраторы создают и ведут проекты команды и приглашают людей.'
+            : 'Участники видят проекты команды, создают и меняют в них задачи.',
+          'Войдите в Task Manager, чтобы принять или отклонить приглашение:'
         ],
-        button: { href, label: 'Принять приглашение' },
+        button: { href, label: 'Открыть Task Manager' },
         note: 'Если вы не ожидали этого приглашения — просто проигнорируйте письмо.'
       };
   await send(to, tpl.subject, layout(tpl));

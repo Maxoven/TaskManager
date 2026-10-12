@@ -19,7 +19,7 @@ const emailLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });
 const normalizeEmail = (value) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const publicUser = (user) => ({ id: user.id, email: user.email, name: user.name, language: user.language });
+const publicUser = (user) => ({ id: user.id, email: user.email, name: user.name, language: user.language, avatar: user.avatar || null });
 
 // Регистрация
 router.post('/register', authLimiter, async (req, res) => {
@@ -112,6 +112,18 @@ router.post('/login', authLimiter, async (req, res) => {
   } catch (error) {
     console.error('Ошибка входа:', error);
     res.status(500).json({ error: req.t('loginError') });
+  }
+});
+
+// Текущий пользователь — фронтенд обновляет по нему сохранённые данные (имя, фото)
+router.get('/me', authMiddleware, async (req, res) => {
+  try {
+    const { rows: [user] } = await pool.query('SELECT id, email, name, language, avatar FROM users WHERE id = $1', [req.userId]);
+    if (!user) return res.status(401).json({ error: req.t('invalidToken') });
+    res.json(publicUser(user));
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: req.t('serverError') });
   }
 });
 

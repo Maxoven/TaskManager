@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useLanguage } from '../context/LanguageContext';
 import useEscape from '../utils/useEscape';
 import useExitGhost from '../utils/useExitGhost';
@@ -26,7 +27,9 @@ function Modal({ title, onClose, children, className = '', description }) {
     return () => { if (previouslyFocused && previouslyFocused.focus) previouslyFocused.focus(); };
   }, []);
 
-  return (
+  // Окно рендерится прямо в <body>: внутри шапки (backdrop-filter) position: fixed
+  // отсчитывался бы от шапки, и окно уезжало бы за верх экрана
+  return createPortal(
     // Закрываем только если нажатие началось на фоне (а не при выделении текста внутри окна)
     <div ref={overlayRef} className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div
@@ -45,7 +48,8 @@ function Modal({ title, onClose, children, className = '', description }) {
         {description && <p id={descId} className="modal-description">{description}</p>}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

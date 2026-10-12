@@ -9,8 +9,9 @@ const authRoutes = require('./routes/auth');
 const projectRoutes = require('./routes/projects');
 const taskRoutes = require('./routes/tasks');
 const reportRoutes = require('./routes/reports');
-const teamRoutes = require('./routes/team');
+const teamRoutes = require('./routes/teams');
 const assistantRoutes = require('./routes/assistant');
+const avatarRoutes = require('./routes/avatars');
 const { startScheduler } = require('./services/scheduler');
 
 // Без секрета jwt.sign/verify падают на каждом запросе — лучше не стартовать вовсе
@@ -30,12 +31,14 @@ app.use(cors());
 app.use(express.json());
 app.use(langMiddleware);
 
+app.use('/api/auth/avatar', avatarRoutes.own);
 app.use('/api/auth', authRoutes);
+app.use('/api/avatars', avatarRoutes.files);
 app.use('/api/projects', projectRoutes);
 // Публичные маршруты отчётов (magic link из письма, без авторизации) — до taskRoutes
 app.use('/api/tasks/report-token', reportRoutes);
 app.use('/api/tasks', taskRoutes);
-app.use('/api/team', teamRoutes);
+app.use('/api/teams', teamRoutes);
 app.use('/api/assistant', assistantRoutes);
 
 app.get('/api', (req, res) => {

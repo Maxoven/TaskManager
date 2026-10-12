@@ -9,6 +9,7 @@ import { useFeedback } from '../context/FeedbackContext';
 import apiError from '../utils/apiError';
 import GanttChart from './GanttChart';
 import { useLanguage } from '../context/LanguageContext';
+import { useTeams, SHARED } from '../context/TeamContext';
 import AppHeader from './AppHeader';
 import { formatDate, parseDate, deadlineState, DEADLINE_CHIP, DEADLINE_ICON } from '../utils/date';
 import Icon from './Icon';
@@ -19,6 +20,7 @@ import './KanbanBoard.css';
 function KanbanBoard({ user, onLogout }) {
   const { t, lang } = useLanguage();
   const { notify, confirm } = useFeedback();
+  const { selectTeam } = useTeams();
   const [searchParams, setSearchParams] = useSearchParams();
   const { id } = useParams();
   const navigate = useNavigate();
@@ -52,6 +54,8 @@ function KanbanBoard({ user, onLogout }) {
       setStatuses(response.data.statuses || []);
       setTasks(response.data.tasks || []);
       setMembers(response.data.members || []);
+      // Переключатель команд в шапке показывает команду открытого проекта
+      selectTeam(response.data.my_role === 'guest' ? SHARED : response.data.team_id);
       setLoadError('');
       return response.data;
     } catch (error) {
@@ -207,10 +211,11 @@ function KanbanBoard({ user, onLogout }) {
     return filtered;
   };
 
-  const isOwnerMember = (m) => Number(m.is_owner) === 1;
-  const approvedMembers = members.filter(m => m.status === 'approved' || isOwnerMember(m));
-  const pendingMembers = members.filter(m => m.status === 'pending' && !isOwnerMember(m));
-  const isOwner = project?.owner_id === user?.id;
+  const approvedMembers = members.filter(m => m.status === 'approved');
+  const pendingMembers = members.filter(m => m.status === 'pending');
+  // Вести проект (название, гости) могут владелец и админы команды; задачи — все участники
+  const canManage = !!project?.can_manage;
+  const ROLE_TAGS = { owner: 'roleTagOwner', admin: 'roleTagAdmin', member: 'roleTagMember', guest: 'roleTagGuest' };
 
   const filterActive = filterAssignee !== 'all';
 
@@ -253,7 +258,7 @@ function KanbanBoard({ user, onLogout }) {
           <div className="kanban-title-block">
             <div className="project-title-row">
               <h1>{project?.name}</h1>
-              {isOwner && (
+              {canManage && (
                 <button
                   type="button"
                   className="btn-small btn-edit-project"
@@ -291,9 +296,9 @@ function KanbanBoard({ user, onLogout }) {
           <ul className="members-list">
             {approvedMembers.map(member => (
               <li key={member.id} className="member-badge">
-                <Avatar name={member.name} size="sm" aria-hidden="true" />
+                <Avatar name={member.name} src={member.avatar} size="sm" aria-hidden="true" />
                 <span>{member.name}</span>
-                {isOwnerMember(member) && <span className="member-owner-tag">{t('ownerTag')}</span>}
+                {ROLE_TAGS[member.role] && <span className={`member-owner-tag member-role-${member.role}`}>{t(ROLE_TAGS[member.role])}</span>}
               </li>
             ))}
             {pendingMembers.map(member => (
@@ -307,7 +312,7 @@ function KanbanBoard({ user, onLogout }) {
           {/* Одна точка входа для всего, что связано с доступом к проекту */}
           <button type="button" className="btn-small btn-members" onClick={() => setShowMembersModal(true)}>
             <Icon name="users" size={15} />
-            {isOwner ? t('membersManageBtn') : t('membersViewBtn')}
+            {t('membersBtn')}
           </button>
         </div>
 
@@ -407,7 +412,7 @@ function KanbanBoard({ user, onLogout }) {
                                       {task.assignees && task.assignees.length > 0 && (
                                         <div className="task-assignees">
                                           {task.assignees.map(a => (
-                                            <Avatar key={a.id} name={a.name} size="sm" className="assignee-badge" title={a.name} />
+                                            <Avatar key={a.id} name={a.name} src={a.avatar} size="sm" className="assignee-badge" title={a.name} />
                                           ))}
                                         </div>
                                       )}
@@ -486,7 +491,7 @@ function KanbanBoard({ user, onLogout }) {
           project={project}
           members={members}
           user={user}
-          isOwner={isOwner}
+          canManage={canManage}
           onChanged={loadProject}
           onLeft={() => navigate('/')}
           onClose={() => setShowMembersModal(false)}

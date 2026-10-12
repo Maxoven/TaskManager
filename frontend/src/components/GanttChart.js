@@ -231,7 +231,7 @@ function GanttChart({ tasks, onTaskClick, onAddTask, members }) {
                   {task.assignees && task.assignees.length > 0 && (
                     <div className="gantt-task-assignees">
                       {task.assignees.map(a => (
-                        <Avatar key={a.id} name={a.name} size="xs" className="gantt-assignee-badge" title={a.name} />
+                        <Avatar key={a.id} name={a.name} src={a.avatar} size="xs" className="gantt-assignee-badge" title={a.name} />
                       ))}
                     </div>
                   )}

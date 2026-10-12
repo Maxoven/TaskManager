@@ -5,6 +5,7 @@ const pool = require('../config/database');
 const { withTransaction } = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const { sendProjectInvitation } = require('../services/email');
+const { canSeeProjectSql, projectRoleSql, getProjectRole, getTeamRole, isManager } = require('../services/access');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -22,44 +23,51 @@ router.param('userId', requireNumericParam);
 
 const cleanText = (value) => (typeof value === 'string' ? value.trim() : '');
 
-// Проверка доступа к проекту: владелец или подтверждённый участник
+// Проект + моя роль в нём; строки нет — доступа нет
 const PROJECT_ACCESS_SQL = `
-  SELECT p.* FROM projects p
-  WHERE p.id = $1 AND (
-    p.owner_id = $2 OR EXISTS (
-      SELECT 1 FROM project_members pm
-      WHERE pm.project_id = p.id AND pm.user_id = $2 AND pm.status = 'approved'
-    )
-  )
+  SELECT p.*, t.name AS team_name, ${projectRoleSql('p', '$2')} AS my_role
+  FROM projects p
+  LEFT JOIN teams t ON t.id = p.team_id
+  WHERE p.id = $1 AND ${canSeeProjectSql('p', '$2')}
 `;
 
-// Получить все проекты пользователя — сгруппированные по владельцу
+// Удалить с диска файлы задач проектов (записи в БД уходят каскадно)
+function unlinkAttachments(attachments) {
+  attachments.forEach(att => {
+    fs.unlink(path.join(UPLOADS_DIR, att.filename), (err) => {
+      if (err && err.code !== 'ENOENT') console.error('Не удалось удалить файл:', err.message);
+    });
+  });
+}
+
+// Все проекты, к которым у меня есть доступ: проекты моих команд и гостевые.
+// Фронтенд показывает их по выбранной команде (team_id) или в разделе «Доступ к проектам» (my_role = guest).
 router.get('/', async (req, res) => {
   try {
     const { rows } = await pool.query(`
-      SELECT p.*, u.name AS owner_name,
-        CASE WHEN p.owner_id = $1 THEN 'owner' ELSE 'member' END AS role,
-        COALESCE(st.tasks_total, 0) AS tasks_total,
-        COALESCE(st.tasks_done, 0) AS tasks_done,
-        COALESCE(st.tasks_overdue, 0) AS tasks_overdue
-      FROM projects p
-      LEFT JOIN users u ON p.owner_id = u.id
-      -- Статистика для карточки: всего / выполнено (последняя колонка) / просрочено
-      LEFT JOIN LATERAL (
-        SELECT COUNT(*)::int AS tasks_total,
-          COUNT(*) FILTER (WHERE s.position = last.position)::int AS tasks_done,
-          COUNT(*) FILTER (WHERE t.end_date < CURRENT_DATE
-                             AND (s.position IS NULL OR s.position <> last.position))::int AS tasks_overdue
-        FROM tasks t
-        LEFT JOIN statuses s ON s.id = t.status_id
-        CROSS JOIN (SELECT MAX(position) AS position FROM statuses WHERE project_id = p.id) last
-        WHERE t.project_id = p.id
-      ) st ON TRUE
-      WHERE p.owner_id = $1 OR EXISTS (
-        SELECT 1 FROM project_members pm
-        WHERE pm.project_id = p.id AND pm.user_id = $1 AND pm.status = 'approved'
-      )
-      ORDER BY p.owner_id ASC, p.sort_order ASC, p.created_at DESC
+      SELECT * FROM (
+        SELECT p.*, u.name AS owner_name, t.name AS team_name,
+          ${projectRoleSql('p', '$1')} AS my_role,
+          COALESCE(st.tasks_total, 0) AS tasks_total,
+          COALESCE(st.tasks_done, 0) AS tasks_done,
+          COALESCE(st.tasks_overdue, 0) AS tasks_overdue
+        FROM projects p
+        LEFT JOIN users u ON p.owner_id = u.id
+        LEFT JOIN teams t ON t.id = p.team_id
+        -- Статистика для карточки: всего / выполнено (последняя колонка) / просрочено
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*)::int AS tasks_total,
+            COUNT(*) FILTER (WHERE s.position = last.position)::int AS tasks_done,
+            COUNT(*) FILTER (WHERE t.end_date < CURRENT_DATE
+                               AND (s.position IS NULL OR s.position <> last.position))::int AS tasks_overdue
+          FROM tasks t
+          LEFT JOIN statuses s ON s.id = t.status_id
+          CROSS JOIN (SELECT MAX(position) AS position FROM statuses WHERE project_id = p.id) last
+          WHERE t.project_id = p.id
+        ) st ON TRUE
+      ) x
+      WHERE x.my_role IS NOT NULL
+      ORDER BY x.team_id ASC, x.sort_order ASC, x.created_at DESC
     `, [req.userId]);
     res.json(rows);
   } catch (error) {
@@ -73,30 +81,27 @@ router.post('/', async (req, res) => {
   try {
     const name = cleanText(req.body.name).slice(0, 255);
     const description = cleanText(req.body.description) || null;
+    const teamId = Number(req.body.teamId);
     if (!name) {
       return res.status(400).json({ error: req.t('projectNameRequired') });
+    }
+    // Проекты создают владелец и админы команды
+    if (!Number.isInteger(teamId) || !isManager(await getTeamRole(pool, teamId, req.userId))) {
+      return res.status(403).json({ error: req.t('onlyAdminsCreateProjects') });
     }
     const statusNames = req.t('defaultStatuses');
 
     const project = await withTransaction(async (client) => {
       const { rows: [created] } = await client.query(`
-        INSERT INTO projects (name, description, owner_id, sort_order)
-        VALUES ($1, $2, $3, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM projects WHERE owner_id = $3))
+        INSERT INTO projects (name, description, owner_id, team_id, sort_order)
+        VALUES ($1, $2, $3, $4, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM projects WHERE team_id = $4))
         RETURNING *
-      `, [name, description, req.userId]);
+      `, [name, description, req.userId, teamId]);
 
       await client.query(`
         INSERT INTO statuses (project_id, name, position)
         SELECT $1, s.name, s.position FROM unnest($2::text[]) WITH ORDINALITY AS s(name, position)
       `, [created.id, statusNames]);
-
-      // Участники команды получают доступ ко всем проектам владельца, включая новые
-      await client.query(`
-        INSERT INTO project_members (project_id, user_id, status)
-        SELECT $1, member_id, 'approved' FROM team_members
-        WHERE owner_id = $2 AND status = 'approved'
-        ON CONFLICT (project_id, user_id) DO NOTHING
-      `, [created.id, req.userId]);
 
       return created;
     });
@@ -118,13 +123,13 @@ router.patch('/:id', async (req, res) => {
       return res.status(400).json({ error: req.t('projectNameRequired') });
     }
 
-    const { rows: updated } = await pool.query(
-      'UPDATE projects SET name = $1, description = $2 WHERE id = $3 AND owner_id = $4 RETURNING *',
-      [name, description, id, req.userId]
-    );
-    if (updated.length === 0) {
-      return res.status(403).json({ error: req.t('onlyOwnerEdit') });
+    if (!isManager(await getProjectRole(pool, id, req.userId))) {
+      return res.status(403).json({ error: req.t('onlyAdminsEdit') });
     }
+    const { rows: updated } = await pool.query(
+      'UPDATE projects SET name = $1, description = $2 WHERE id = $3 RETURNING *',
+      [name, description, id]
+    );
     res.json(updated[0]);
   } catch (error) {
     console.error(error);
@@ -142,7 +147,10 @@ router.post('/reorder', async (req, res) => {
     await pool.query(`
       UPDATE projects p SET sort_order = o.position
       FROM unnest($1::int[]) WITH ORDINALITY AS o(id, position)
-      WHERE p.id = o.id AND p.owner_id = $2
+      WHERE p.id = o.id AND EXISTS (
+        SELECT 1 FROM team_memberships tm
+        WHERE tm.team_id = p.team_id AND tm.user_id = $2 AND tm.status = 'approved' AND tm.role IN ('owner', 'admin')
+      )
     `, [projectIds, req.userId]);
     res.json({ message: req.t('orderSaved') });
   } catch (error) {
@@ -155,24 +163,17 @@ router.post('/reorder', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    if (!isManager(await getProjectRole(pool, id, req.userId))) {
+      return res.status(403).json({ error: req.t('onlyAdminsDelete') });
+    }
     // Файлы задач каскадно удаляются из БД — запоминаем их, чтобы убрать и с диска
     const { rows: attachments } = await pool.query(`
       SELECT f.filename FROM task_attachments f
       JOIN tasks t ON t.id = f.task_id
-      JOIN projects p ON p.id = t.project_id
-      WHERE p.id = $1 AND p.owner_id = $2
-    `, [id, req.userId]);
-    const { rowCount } = await pool.query(
-      'DELETE FROM projects WHERE id = $1 AND owner_id = $2', [id, req.userId]
-    );
-    if (rowCount === 0) {
-      return res.status(403).json({ error: req.t('onlyOwnerDelete') });
-    }
-    attachments.forEach(att => {
-      fs.unlink(path.join(UPLOADS_DIR, att.filename), (err) => {
-        if (err && err.code !== 'ENOENT') console.error('Не удалось удалить файл:', err.message);
-      });
-    });
+      WHERE t.project_id = $1
+    `, [id]);
+    await pool.query('DELETE FROM projects WHERE id = $1', [id]);
+    unlinkAttachments(attachments);
     res.json({ message: req.t('projectDeleted') });
   } catch (error) {
     console.error(error);
@@ -184,10 +185,11 @@ router.delete('/:id', async (req, res) => {
 router.get('/invitations/pending', async (req, res) => {
   try {
     const { rows } = await pool.query(`
-      SELECT p.*, u.name AS owner_name, pm.invited_at
+      SELECT p.*, u.name AS owner_name, t.name AS team_name, pm.invited_at
       FROM project_members pm
       JOIN projects p ON pm.project_id = p.id
       JOIN users u ON p.owner_id = u.id
+      LEFT JOIN teams t ON t.id = p.team_id
       WHERE pm.user_id = $1 AND pm.status = 'pending'
       ORDER BY pm.invited_at DESC
     `, [req.userId]);
@@ -215,7 +217,7 @@ router.get('/:id', async (req, res) => {
       SELECT t.id, t.project_id, t.status_id, t.title, t.description,
         t.start_date, t.end_date, t.created_at, t.updated_at,
         COALESCE((
-          SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email) ORDER BY u.name)
+          SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email, 'avatar', u.avatar) ORDER BY u.name)
           FROM task_assignees ta JOIN users u ON ta.user_id = u.id
           WHERE ta.task_id = t.id
         ), '[]') AS assignees,
@@ -234,23 +236,25 @@ router.get('/:id', async (req, res) => {
       ORDER BY t.created_at DESC
     `, [id]);
 
+    // Участники: команда проекта (подтверждённые) + гости, приглашённые только сюда
     const { rows: members } = await pool.query(`
-      SELECT u.id, u.name, u.email, pm.status, pm.invited_at,
-        CASE WHEN p.owner_id = u.id THEN 1 ELSE 0 END AS is_owner,
-        CASE WHEN tm.id IS NOT NULL THEN 'team' ELSE 'project' END AS source
-      FROM project_members pm
-      JOIN users u ON pm.user_id = u.id
-      JOIN projects p ON pm.project_id = p.id
-      LEFT JOIN team_members tm ON tm.owner_id = p.owner_id AND tm.member_id = u.id AND tm.status = 'approved'
-      WHERE pm.project_id = $1 AND pm.user_id <> p.owner_id
+      SELECT u.id, u.name, u.email, u.avatar, 'approved' AS status, tm.invited_at,
+        tm.role, 'team' AS source, CASE WHEN tm.role = 'owner' THEN 1 ELSE 0 END AS is_owner
+      FROM team_memberships tm
+      JOIN users u ON u.id = tm.user_id
+      WHERE tm.team_id = $2 AND tm.status = 'approved'
       UNION ALL
-      SELECT u.id, u.name, u.email, 'approved' AS status, p.created_at AS invited_at, 1 AS is_owner, 'owner' AS source
-      FROM projects p
-      JOIN users u ON p.owner_id = u.id
-      WHERE p.id = $1
-    `, [id]);
+      SELECT u.id, u.name, u.email, u.avatar, pm.status, pm.invited_at,
+        'guest' AS role, 'project' AS source, 0 AS is_owner
+      FROM project_members pm
+      JOIN users u ON u.id = pm.user_id
+      WHERE pm.project_id = $1 AND NOT EXISTS (
+        SELECT 1 FROM team_memberships tm2
+        WHERE tm2.team_id = $2 AND tm2.user_id = pm.user_id AND tm2.status = 'approved'
+      )
+    `, [id, access[0].team_id]);
 
-    res.json({ ...access[0], statuses, tasks, members });
+    res.json({ ...access[0], can_manage: isManager(access[0].my_role), statuses, tasks, members });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: req.t('projectFetchError') });
@@ -261,13 +265,14 @@ router.get('/:id', async (req, res) => {
 router.post('/:id/leave', async (req, res) => {
   try {
     const { id } = req.params;
-    const { rows: projects } = await pool.query('SELECT owner_id FROM projects WHERE id = $1', [id]);
+    const role = await getProjectRole(pool, id, req.userId);
     // Тот же ответ, что и при отсутствии доступа, — не раскрываем существование чужих проектов
-    if (projects.length === 0) {
+    if (!role) {
       return res.status(403).json({ error: req.t('accessDenied') });
     }
-    if (projects[0].owner_id === req.userId) {
-      return res.status(400).json({ error: req.t('ownerCannotLeave') });
+    // Участник команды выходит из команды целиком (в её настройках), а не из одного проекта
+    if (role !== 'guest') {
+      return res.status(400).json({ error: req.t('teamMemberCannotLeaveProject') });
     }
     const left = await withTransaction(async (client) => {
       const { rowCount } = await client.query(
@@ -295,11 +300,13 @@ router.post('/:id/leave', async (req, res) => {
 router.delete('/:id/members/:userId', async (req, res) => {
   try {
     const { id, userId } = req.params;
-    const { rows: projects } = await pool.query(
-      'SELECT id FROM projects WHERE id = $1 AND owner_id = $2', [id, req.userId]
-    );
-    if (projects.length === 0) {
-      return res.status(403).json({ error: req.t('onlyOwnerRemoveMembers') });
+    if (!isManager(await getProjectRole(pool, id, req.userId))) {
+      return res.status(403).json({ error: req.t('onlyAdminsRemoveMembers') });
+    }
+    // Здесь убирают только гостей проекта; участников команды — в настройках команды
+    const targetRole = await getProjectRole(pool, id, userId);
+    if (targetRole && targetRole !== 'guest') {
+      return res.status(400).json({ error: req.t('removeTeamMemberInTeamSettings') });
     }
     await withTransaction(async (client) => {
       await client.query(
@@ -323,12 +330,10 @@ router.post('/:id/invite', async (req, res) => {
   try {
     const { id } = req.params;
     const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
-    const { rows: projects } = await pool.query(
-      'SELECT * FROM projects WHERE id = $1 AND owner_id = $2', [id, req.userId]
-    );
-    if (projects.length === 0) {
-      return res.status(403).json({ error: req.t('onlyOwnerInvite') });
+    if (!isManager(await getProjectRole(pool, id, req.userId))) {
+      return res.status(403).json({ error: req.t('onlyAdminsInvite') });
     }
+    const { rows: projects } = await pool.query('SELECT * FROM projects WHERE id = $1', [id]);
     const { rows: users } = await pool.query(
       'SELECT id, name, email, language FROM users WHERE LOWER(email) = $1', [email]
     );
@@ -338,6 +343,13 @@ router.post('/:id/invite', async (req, res) => {
     const invitedUser = users[0];
     if (invitedUser.id === req.userId) {
       return res.status(400).json({ error: req.t('cannotInviteSelf') });
+    }
+    const { rows: inTeam } = await pool.query(
+      `SELECT 1 FROM team_memberships WHERE team_id = $1 AND user_id = $2 AND status = 'approved'`,
+      [projects[0].team_id, invitedUser.id]
+    );
+    if (inTeam.length > 0) {
+      return res.status(400).json({ error: req.t('alreadyInTeamHasAccess') });
     }
     const { rows: existing } = await pool.query(
       'SELECT id FROM project_members WHERE project_id = $1 AND user_id = $2', [id, invitedUser.id]
@@ -350,7 +362,7 @@ router.post('/:id/invite', async (req, res) => {
       [id, invitedUser.id, 'pending']
     );
 
-    // Получаем имя владельца и отправляем письмо
+    // Получаем имя пригласившего и отправляем письмо
     const { rows: ownerRows } = await pool.query('SELECT name FROM users WHERE id = $1', [req.userId]);
     const inviterName = ownerRows[0]?.name || 'Task Manager';
     sendProjectInvitation(invitedUser, inviterName, projects[0].name)

@@ -425,6 +425,23 @@ input[type='checkbox'] {
 .avatar-xs { width: 20px; height: 20px; font-size: 0.625rem; }
 .avatar-sm { width: 24px; height: 24px; font-size: 0.6875rem; }
 .avatar-lg { width: 40px; height: 40px; font-size: var(--text-base); }
+.avatar-xl { width: 64px; height: 64px; font-size: 1.5rem; }
+
+/* Фото профиля заполняет кружок целиком */
+.avatar-photo {
+  overflow: hidden;
+  background: var(--color-surface-sunken);
+}
+
+.avatar-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Знак команды — квадрат со скруглением, чтобы не путать с человеком */
+.avatar-square { border-radius: 28%; }
 
 .avatar-h0 { background: var(--avatar-0-bg); color: var(--avatar-0-fg); }
 .avatar-h1 { background: var(--avatar-1-bg); color: var(--avatar-1-fg); }

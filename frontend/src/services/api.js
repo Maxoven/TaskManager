@@ -79,14 +79,28 @@ export const getAssistant = () => api.get('/assistant');
 export const sendAssistantMessage = (text) => api.post('/assistant/messages', { text }, { timeout: 180000 });
 export const clearAssistant = () => api.delete('/assistant/messages');
 
-// Team
-export const getTeam = () => api.get('/team');
-export const addTeamMember = (email) => api.post('/team', { email });
-export const removeTeamMember = (memberId) => api.delete(`/team/${memberId}`);
-export const getTeamInvitations = () => api.get('/team/invitations');
-export const respondToTeamInvitation = (ownerId, action) => api.patch(`/team/invitations/${ownerId}/${action}`);
-export const getTeamMemberships = () => api.get('/team/memberships');
-export const leaveTeam = (ownerId) => api.delete(`/team/memberships/${ownerId}`);
+// Команды: у пользователя может быть несколько, роли owner / admin / member
+export const getTeams = () => api.get('/teams');
+export const createTeam = (name) => api.post('/teams', { name });
+export const getTeamDetails = (teamId) => api.get(`/teams/${teamId}`);
+export const renameTeam = (teamId, name) => api.patch(`/teams/${teamId}`, { name });
+export const deleteTeam = (teamId) => api.delete(`/teams/${teamId}`);
+export const inviteToTeam = (teamId, email, role) => api.post(`/teams/${teamId}/members`, { email, role });
+export const changeTeamRole = (teamId, userId, role) => api.patch(`/teams/${teamId}/members/${userId}`, { role });
+export const removeTeamMember = (teamId, userId) => api.delete(`/teams/${teamId}/members/${userId}`);
+export const getTeamInvitations = () => api.get('/teams/invitations');
+export const respondToTeamInvitation = (teamId, action) => api.patch(`/teams/invitations/${teamId}/${action}`);
+
+// Профиль
+export const getMe = () => api.get('/auth/me');
+export const uploadAvatar = (blob) => {
+  const formData = new FormData();
+  formData.append('avatar', blob, 'avatar');
+  return api.post('/auth/avatar', formData);
+};
+export const deleteAvatar = () => api.delete('/auth/avatar');
+// Фото раздаётся без токена — <img> его и не отправит
+export const avatarUrl = (file) => (file ? `${API_URL}/avatars/${file}` : null);
 
 // Email verification
 export const verifyEmail = (token) => api.get(`/auth/verify-email/${token}`);
