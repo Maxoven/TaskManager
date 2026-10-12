@@ -88,6 +88,7 @@ function ProjectFormModal({ project, onSubmit, onClose, teamName, teamId, userId
           <label htmlFor="project-description">{t('projectDescLabel')}</label>
           <textarea id="project-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={t('projectDescPlaceholder')} rows="3" />
         </div>
+        {project && <p className="field-hint edit-access-hint"><Icon name="lock" size={13} /> {t('editAccessWhereHint')}</p>}
         {!project && (roster
           ? <ProjectAccessPicker roster={roster} selfId={userId} value={access} onChange={setAccess} />
           : <p className="hint-text">{t('loading')}</p>)}
@@ -115,8 +116,10 @@ function ProjectCard({ project, canManage, onEdit, onDelete }) {
         <h3><Link to={`/project/${project.id}`} className="project-card-link" onClick={(e) => e.stopPropagation()}>{project.name}</Link></h3>
       </div>
       {project.description && <p className="project-card-desc">{project.description}</p>}
-      {project.visibility === 'selected' && (
-        <p className="project-card-access" title={t('accessSelectedChipTitle')}><Icon name="lock" size={13} />{t('accessSelectedChip')}</p>
+      {project.visibility === 'selected' && project.my_role !== 'guest' && (
+        <p className="project-card-access" title={t('accessSelectedChipTitle')}>
+          <Icon name="lock" size={13} />{t('accessCountChip', { count: project.access_count, total: project.team_size })}
+        </p>
       )}
       <ProjectStats project={project} />
       {canManage && (
@@ -349,7 +352,7 @@ function Dashboard({ user, onLogout }) {
         <p className="team-context">
           <Avatar name={currentTeam.name} size="sm" square aria-hidden="true" />
           <span>
-            {t('teamContextBefore')} <strong className="team-context-name">«{currentTeam.name}»</strong>:{' '}
+            {t('teamContextBefore')} <strong className="team-context-name">{t('quotedName', { name: currentTeam.name })}</strong>:{' '}
             <strong className={`role-chip role-chip-${myRole}`}>{t(ROLE_LABEL_KEYS[myRole])}</strong>
             {' — '}{t(`roleShort_${myRole}`)}
           </span>
@@ -488,10 +491,10 @@ function Dashboard({ user, onLogout }) {
                   </div>
                 )}
               </div>
-              {!canManage && (
+              {myRole !== 'owner' && (
                 <p className="role-note">
                   <Icon name="info" size={16} />
-                  <span>{t('memberProjectsNote')}{currentTeam?.owner_name && <> {t('askOwnerForProject', { name: currentTeam.owner_name })}</>}</span>
+                  <span>{t(myRole === 'admin' ? 'adminProjectsNote' : 'memberProjectsNote', { name: currentTeam?.owner_name || t('roleOwner') })}</span>
                 </p>
               )}
 

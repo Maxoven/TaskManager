@@ -260,6 +260,7 @@ function TeamSettings({ teamId, user, onChanged }) {
                 ))}
               </div>
               <p className="field-hint invite-role-hint" aria-live="polite">{t(`roleLong_${inviteRole}`)} {t('roleChangeLaterHint')}</p>
+              <p className="field-hint invite-role-hint">{t('newMemberAccessHint')}</p>
             </fieldset>
           </InviteForm>
         </section>

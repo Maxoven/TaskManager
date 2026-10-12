@@ -89,6 +89,10 @@ router.get('/', async (req, res) => {
       SELECT * FROM (
         SELECT p.*, u.name AS owner_name, t.name AS team_name,
           ${projectRoleSql('p', '$1')} AS my_role,
+          -- Сколько людей команды видят проект и сколько их всего — для метки на карточке
+          (SELECT COUNT(*)::int FROM team_memberships tv
+           WHERE tv.team_id = p.team_id AND tv.status = 'approved' AND ${teamSeesProjectSql('p', 'tv.user_id')}) AS access_count,
+          (SELECT COUNT(*)::int FROM team_memberships tt WHERE tt.team_id = p.team_id AND tt.status = 'approved') AS team_size,
           COALESCE(st.tasks_total, 0) AS tasks_total,
           COALESCE(st.tasks_done, 0) AS tasks_done,
           COALESCE(st.tasks_overdue, 0) AS tasks_overdue

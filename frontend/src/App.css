@@ -942,13 +942,16 @@ input[type='checkbox'] {
   margin-top: var(--space-3);
 }
 
-.members-access-actions {
+.members-unsaved {
+  align-self: center;
+  color: var(--status-warning-fg);
+}
+
+.edit-access-hint {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  margin: calc(-1 * var(--space-2)) 0 var(--space-3);
+  gap: 6px;
+  margin: calc(-1 * var(--space-2)) 0 var(--space-4);
 }
 
 .members-access {
