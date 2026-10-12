@@ -211,6 +211,12 @@
   padding-top: var(--space-4);
 }
 
+/* Если над прогрессом есть метка доступа, отступ «вниз до конца» берёт она */
+.project-card-access + .project-stats {
+  margin-top: 0;
+  padding-top: var(--space-3);
+}
+
 .project-progress {
   height: 6px;
   border-radius: var(--radius-full);
