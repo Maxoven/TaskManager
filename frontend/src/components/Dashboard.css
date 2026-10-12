@@ -211,6 +211,12 @@
   padding-top: var(--space-4);
 }
 
+/* Если над прогрессом есть метка доступа, отступ «вниз до конца» берёт она */
+.project-card-access + .project-stats {
+  margin-top: 0;
+  padding-top: var(--space-3);
+}
+
 .project-progress {
   height: 6px;
   border-radius: var(--radius-full);
@@ -832,8 +838,13 @@
     display: flex;
   }
 
+  /* Четыре вкладки при крупном шрифте не помещаются — переносим на вторую строку, а не прячем */
+  .dashboard-tabs {
+    flex-wrap: wrap;
+  }
+
   .dashboard-tabs .segmented-btn {
-    flex: 1;
+    flex: 1 1 auto;
     padding: 0 var(--space-2);
     gap: 6px;
     font-size: var(--text-sm);
@@ -916,5 +927,316 @@
 @media (max-width: 420px) {
   .dashboard-tabs .segmented-btn .icon {
     display: none;
+  }
+}
+
+/* ─── Трудоёмкость (components/Workload.js) ─── */
+.workload-head {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 6.5rem minmax(4rem, 9rem) 3.5rem 2.5rem;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-sunken);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+}
+
+.workload-head span {
+  white-space: nowrap;
+}
+
+.workload-head span:nth-child(3) {
+  text-align: right;
+}
+
+.workload-head span:nth-child(4) {
+  grid-column: 4 / 6;
+}
+
+.workload-total {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border-strong);
+  background: var(--color-surface-sunken);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.workload-export {
+  align-self: flex-end;
+  min-height: var(--control-height-sm);
+}
+
+.workload-task-over {
+  display: inline-flex;
+  margin-right: 4px;
+  color: var(--status-warning-fg);
+  vertical-align: -2px;
+}
+
+.workload-controls {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  max-width: 50rem;
+  margin-bottom: var(--space-4);
+}
+
+.workload-dates {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.workload-dates label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.workload-dates input {
+  width: auto;
+  min-height: var(--control-height-sm);
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.workload-summary {
+  max-width: 50rem;
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.workload-list {
+  list-style: none;
+  max-width: 50rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+  transition: opacity var(--dur) var(--ease-out);
+}
+
+.workload-list.is-loading {
+  opacity: 0.6;
+}
+
+.workload-person + .workload-person {
+  border-top: 1px solid var(--color-border);
+}
+
+.workload-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 6.5rem minmax(4rem, 9rem) 3.5rem 2.5rem;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.workload-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--weight-medium);
+}
+
+.workload-hours {
+  text-align: right;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.workload-hours strong {
+  color: var(--color-text);
+  font-size: var(--text-base);
+}
+
+.workload-bar {
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-sunken);
+  overflow: hidden;
+}
+
+.workload-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-brand);
+}
+
+.workload-high .workload-bar span { background: var(--status-warning-solid); }
+.workload-over .workload-bar span { background: var(--status-danger-solid); }
+
+.workload-percent {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+
+.workload-over .workload-percent { color: var(--status-danger-fg); font-weight: var(--weight-semibold); }
+.workload-high .workload-percent { color: var(--status-warning-fg); }
+
+.workload-toggle .icon {
+  transition: transform var(--dur) var(--ease-out);
+}
+
+.workload-toggle[aria-expanded='true'] .icon {
+  transform: rotate(180deg);
+}
+
+.workload-undated {
+  margin: calc(-1 * var(--space-2)) var(--space-4) var(--space-3) calc(var(--space-4) + 24px + var(--space-3));
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.workload-tasks {
+  list-style: none;
+  margin: 0 var(--space-4) var(--space-3) calc(var(--space-4) + 24px + var(--space-3));
+  border-left: 2px solid var(--color-border);
+}
+
+.workload-tasks li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--space-3);
+  padding: var(--space-2) 0 var(--space-2) var(--space-3);
+}
+
+.workload-task-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.workload-task-hours {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.workload-task-meta .nowrap {
+  white-space: nowrap;
+}
+
+.workload-task-meta {
+  grid-column: 1;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.workload-note {
+  max-width: 72ch;
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 700px) {
+  .workload-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .workload-presets {
+    display: flex;
+  }
+
+  .workload-presets .segmented-btn {
+    flex: 1;
+    min-width: 0;
+    padding: 4px var(--space-2);
+    font-size: var(--text-sm);
+    white-space: normal;
+    line-height: var(--leading-tight);
+  }
+
+  .workload-dates label {
+    flex: 1;
+  }
+
+  .workload-export {
+    flex-basis: 100%;
+  }
+
+  .workload-head {
+    display: none;
+  }
+
+  .workload-dates input {
+    width: 100%;
+  }
+
+  /* Строка человека: имя и часы сверху, полоса загрузки — второй строкой */
+  .workload-row {
+    grid-template-columns: auto minmax(0, 1fr) auto 2.5rem;
+    padding: var(--space-3);
+  }
+
+  .workload-bar {
+    grid-column: 2 / 4;
+    grid-row: 2;
+  }
+
+  .workload-percent {
+    grid-column: 4;
+    grid-row: 2;
+  }
+
+  .workload-undated,
+  .workload-tasks {
+    margin-left: var(--space-3);
+    margin-right: var(--space-3);
+  }
+}
+
+/* Сенсорные экраны: кнопки отчёта не меньше 40px */
+@media (pointer: coarse) {
+  .workload-toggle {
+    width: 40px;
+    min-height: 40px;
+  }
+
+  .workload-export {
+    min-height: var(--control-height);
+  }
+
+  .workload-presets .segmented-btn {
+    min-height: 40px;
+  }
+}
+
+/* Короткая подпись вкладки на узких экранах */
+.tab-label-short {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .tab-label-full {
+    display: none;
+  }
+
+  .tab-label-short {
+    display: inline;
   }
 }

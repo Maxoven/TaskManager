@@ -8,6 +8,8 @@ import { ROLE_LABEL_KEYS } from './TeamSwitcher';
 import AppHeader from './AppHeader';
 import Modal from './Modal';
 import TeamSettings from './TeamSettings';
+import Workload from './Workload';
+import ProjectAccessPicker, { newProjectAccess, accessPayload } from './ProjectAccessPicker';
 import Icon from './Icon';
 import Avatar from './Avatar';
 import { DashboardSkeleton } from './Skeleton';
@@ -16,11 +18,11 @@ import apiError from '../utils/apiError';
 import {
   getProjects, createProject, updateProject, deleteProject,
   getPendingInvitations, respondToInvitation, reorderProjects, getMyTasks,
-  respondToTeamInvitation
+  respondToTeamInvitation, getTeamDetails
 } from '../services/api';
 import './Dashboard.css';
 
-const TABS = ['projects', 'mytasks', 'team'];
+const TABS = ['projects', 'mytasks', 'workload', 'team'];
 
 // Прогресс проекта на карточке: выполнено / всего и просрочки
 function ProjectStats({ project }) {
@@ -43,18 +45,28 @@ function ProjectStats({ project }) {
   );
 }
 
-// Форма проекта — одна для создания и редактирования
-function ProjectFormModal({ project, onSubmit, onClose, teamName }) {
+// Форма проекта — одна для создания и редактирования.
+// При создании ещё и «Кто видит проект»: по умолчанию только отмеченные люди команды.
+function ProjectFormModal({ project, onSubmit, onClose, teamName, teamId, userId }) {
   const { t } = useLanguage();
   const [form, setForm] = useState({ name: project?.name || '', description: project?.description || '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [roster, setRoster] = useState(null);
+  const [access, setAccess] = useState(() => newProjectAccess(userId));
+
+  useEffect(() => {
+    if (project || !teamId) return;
+    getTeamDetails(teamId)
+      .then(({ data }) => setRoster(data.members.filter(m => m.status === 'approved')))
+      .catch(() => setRoster([]));
+  }, [project, teamId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(''); setSaving(true);
     try {
-      await onSubmit(form);
+      await onSubmit(project ? form : { ...form, ...accessPayload(access) });
     } catch (err) {
       setError(apiError(err, t, project ? 'projectUpdateError' : 'projectCreateError'));
       setSaving(false);
@@ -77,6 +89,10 @@ function ProjectFormModal({ project, onSubmit, onClose, teamName }) {
           <label htmlFor="project-description">{t('projectDescLabel')}</label>
           <textarea id="project-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={t('projectDescPlaceholder')} rows="3" />
         </div>
+        {project && <p className="field-hint edit-access-hint"><Icon name="lock" size={13} /> {t('editAccessWhereHint')}</p>}
+        {!project && (roster
+          ? <ProjectAccessPicker roster={roster} selfId={userId} value={access} onChange={setAccess} />
+          : <p className="hint-text">{t('loading')}</p>)}
         {error && <div className="error" role="alert">{error}</div>}
         <div className="modal-actions">
           <div className="modal-actions-right">
@@ -101,6 +117,11 @@ function ProjectCard({ project, canManage, onEdit, onDelete }) {
         <h3><Link to={`/project/${project.id}`} className="project-card-link" onClick={(e) => e.stopPropagation()}>{project.name}</Link></h3>
       </div>
       {project.description && <p className="project-card-desc">{project.description}</p>}
+      {project.visibility === 'selected' && project.my_role !== 'guest' && (
+        <p className="project-card-access" title={t('accessSelectedChipTitle')}>
+          <Icon name="lock" size={13} />{t('accessCountChip', { count: project.access_count, total: project.team_size })}
+        </p>
+      )}
       <ProjectStats project={project} />
       {canManage && (
         <div className="project-card-actions" onClick={(e) => e.stopPropagation()}>
@@ -137,7 +158,7 @@ function Dashboard({ user, onLogout }) {
 
   // Вкладка хранится в адресе (?tab=team), чтобы на неё можно было сослаться и вернуться кнопкой «Назад».
   // В разделе «Отдельные проекты» команды нет — и вкладки «Команда» тоже.
-  const tabs = isShared ? TABS.filter(tab => tab !== 'team') : TABS;
+  const tabs = isShared ? TABS.filter(tab => tab !== 'team' && tab !== 'workload') : TABS;
   const tabParam = searchParams.get('tab');
   const activeTab = tabs.includes(tabParam) ? tabParam : 'projects';
   const setActiveTab = (tab) => setSearchParams(tab === 'projects' ? {} : { tab });
@@ -332,7 +353,7 @@ function Dashboard({ user, onLogout }) {
         <p className="team-context">
           <Avatar name={currentTeam.name} size="sm" square aria-hidden="true" />
           <span>
-            {t('teamContextBefore')} <strong className="team-context-name">«{currentTeam.name}»</strong>:{' '}
+            {t('teamContextBefore')} <strong className="team-context-name">{t('quotedName', { name: currentTeam.name })}</strong>:{' '}
             <strong className={`role-chip role-chip-${myRole}`}>{t(ROLE_LABEL_KEYS[myRole])}</strong>
             {' — '}{t(`roleShort_${myRole}`)}
           </span>
@@ -397,6 +418,13 @@ function Dashboard({ user, onLogout }) {
           {t('tabMyTasks')}
           {overdueCount > 0 && <span className="count-badge count-badge-danger" title={t('overdueBadgeTitle')}>{overdueCount}</span>}
         </button>
+        {!isShared && (
+          <button type="button" className={`tab-btn segmented-btn ${activeTab === 'workload' ? 'active' : ''}`} aria-current={activeTab === 'workload' ? 'page' : undefined} onClick={() => setActiveTab('workload')}>
+            <Icon name="clock" />
+            <span className="tab-label-full">{t('tabWorkload')}</span>
+            <span className="tab-label-short" aria-hidden="true">{t('tabWorkloadShort')}</span>
+          </button>
+        )}
         {!isShared && (
           <button type="button" className={`tab-btn segmented-btn ${activeTab === 'team' ? 'active' : ''}`} aria-current={activeTab === 'team' ? 'page' : undefined} onClick={() => setActiveTab('team')}>
             <Icon name="users" />
@@ -471,10 +499,10 @@ function Dashboard({ user, onLogout }) {
                   </div>
                 )}
               </div>
-              {!canManage && (
+              {myRole !== 'owner' && (
                 <p className="role-note">
                   <Icon name="info" size={16} />
-                  <span>{t('memberProjectsNote')}{currentTeam?.owner_name && <> {t('askOwnerForProject', { name: currentTeam.owner_name })}</>}</span>
+                  <span>{t(myRole === 'admin' ? 'adminProjectsNote' : 'memberProjectsNote', { name: currentTeam?.owner_name || t('roleOwner') })}</span>
                 </p>
               )}
 
@@ -559,6 +587,10 @@ function Dashboard({ user, onLogout }) {
         );
       })()}
 
+      {activeTab === 'workload' && currentTeam && (
+        <Workload key={currentTeam.id} team={currentTeam} />
+      )}
+
       {activeTab === 'team' && currentTeam && (
         <TeamSettings key={currentTeam.id} teamId={currentTeam.id} user={user} onChanged={reloadAll} />
       )}
@@ -566,7 +598,7 @@ function Dashboard({ user, onLogout }) {
       </main>
 
       {showCreateModal && (
-        <ProjectFormModal onSubmit={handleCreateProject} onClose={() => setShowCreateModal(false)} teamName={currentTeam?.name} />
+        <ProjectFormModal onSubmit={handleCreateProject} onClose={() => setShowCreateModal(false)} teamName={currentTeam?.name} teamId={currentTeam?.id} userId={user?.id} />
       )}
 
       {editProject && (

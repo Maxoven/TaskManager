@@ -11,7 +11,7 @@ import GanttChart from './GanttChart';
 import { useLanguage } from '../context/LanguageContext';
 import { useTeams, SHARED } from '../context/TeamContext';
 import AppHeader from './AppHeader';
-import { formatDate, parseDate, deadlineState, DEADLINE_CHIP, DEADLINE_ICON } from '../utils/date';
+import { formatDate, parseDate, deadlineState, formatHours, DEADLINE_CHIP, DEADLINE_ICON } from '../utils/date';
 import Icon from './Icon';
 import Avatar from './Avatar';
 import { BoardSkeleton } from './Skeleton';
@@ -39,6 +39,7 @@ function KanbanBoard({ user, onLogout }) {
   const [showFullDesc, setShowFullDesc] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [noAccess, setNoAccess] = useState(false);
   const [viewMode, setViewMode] = useState('kanban');
   // Фильтры
   const [filterAssignee, setFilterAssignee] = useState('all');
@@ -61,7 +62,10 @@ function KanbanBoard({ user, onLogout }) {
     } catch (error) {
       // Если проект уже на экране, не заменяем доску страницей ошибки — достаточно уведомления
       if (project) notify.error(apiError(error, t, 'projectLoadError'));
-      else setLoadError(error.response?.status === 403 ? t('projectNoAccess') : apiError(error, t, 'projectLoadError'));
+      else {
+        setNoAccess(error.response?.status === 403);
+        setLoadError(error.response?.status === 403 ? t('projectNoAccess') : apiError(error, t, 'projectLoadError'));
+      }
       return null;
     } finally {
       setLoading(false);
@@ -239,8 +243,10 @@ function KanbanBoard({ user, onLogout }) {
           <span className="page-error-icon" aria-hidden="true"><Icon name="alert" size={26} /></span>
           <p className="page-error-title">{t('projectLoadErrorTitle')}</p>
           <p className="page-error-text">{loadError}</p>
+          {noAccess && <p className="page-error-text">{t('projectNoAccessHint')}</p>}
           <div className="page-error-actions">
-            <button type="button" onClick={() => { setLoading(true); loadProject(); }} className="btn-secondary">{t('retry')}</button>
+            {/* Нет доступа — повтор не поможет, остаётся вернуться */}
+            {!noAccess && <button type="button" onClick={() => { setLoading(true); loadProject(); }} className="btn-secondary">{t('retry')}</button>}
             <button type="button" onClick={() => navigate('/')} className="btn-primary">{t('backToProjects')}</button>
           </div>
         </main>
@@ -400,6 +406,11 @@ function KanbanBoard({ user, onLogout }) {
                                             {deadlineLabel && <span className="visually-hidden"> — {deadlineLabel}</span>}
                                           </span>
                                         )}
+                                        {task.effort_hours > 0 && (
+                                          <span className="task-effort-badge" title={t('effortBadgeTitle', { hours: formatHours(task.effort_hours, lang) })}>
+                                            <Icon name="clock" size={13} />{t('effortBadge', { hours: formatHours(task.effort_hours, lang) })}
+                                          </span>
+                                        )}
                                         {task.attachments_count > 0 && (
                                           <span className="task-attachments-badge" title={`${t('filesCount')} ${task.attachments_count}`}>
                                             <Icon name="paperclip" size={13} />{task.attachments_count}
@@ -474,6 +485,7 @@ function KanbanBoard({ user, onLogout }) {
               <label htmlFor="edit-project-description">{t('projectDescLabel')}</label>
               <textarea id="edit-project-description" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows="3" />
             </div>
+            <p className="field-hint edit-access-hint"><Icon name="lock" size={13} /> {t('editAccessWhereHint')}</p>
             {editError && <div className="error" role="alert">{editError}</div>}
             <div className="modal-actions">
               <div className="modal-actions-right">

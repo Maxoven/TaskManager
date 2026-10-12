@@ -374,7 +374,9 @@
   min-width: 0;
 }
 
-.task-attachments-badge {
+.task-attachments-badge,
+.task-effort-badge {
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 3px;

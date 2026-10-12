@@ -45,3 +45,19 @@ export function deadlineState(task) {
   if (days <= 3) return 'due-soon';
   return '';
 }
+
+// Календарных дней в сроке задачи, включая день начала и день окончания (null — срок не задан).
+// Если указана только одна дата, задача длится один день.
+export function taskDays(start, end) {
+  const s = parseDate(start || end), e = parseDate(end || start);
+  if (!s || !e || isNaN(s) || isNaN(e)) return null;
+  return Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
+}
+
+// Человеко-часы для показа: 12, 7.5, 0.25 — без лишних нулей. digits — сколько знаков после запятой
+export function formatHours(value, lang, digits = 2) {
+  if (value === null || value === undefined || value === '') return '';
+  return Number(value).toLocaleString(lang === 'en' ? 'en-US' : 'ru-RU', { maximumFractionDigits: digits });
+}
+
+export const HOURS_PER_DAY = 8;

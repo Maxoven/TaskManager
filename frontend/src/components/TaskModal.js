@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { uploadFile, getTaskAttachments, downloadFile, deleteFile, getTaskReports } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { useFeedback } from '../context/FeedbackContext';
-import { toInputDate, formatDate } from '../utils/date';
+import { toInputDate, formatDate, taskDays, formatHours, HOURS_PER_DAY } from '../utils/date';
 import apiError from '../utils/apiError';
 import Modal from './Modal';
 import Icon from './Icon';
@@ -25,6 +25,8 @@ const initialForm = (task, defaultStatusId) => ({
   startDate: toInputDate(task?.start_date),
   endDate: toInputDate(task?.end_date),
   assigneeIds: task?.assignees?.map(a => a.id) || [],
+  // Трудоёмкость по исполнителям: { [userId]: 'часы' } — строкой, как в поле ввода
+  assigneeHours: Object.fromEntries((task?.assignees || []).filter(a => a.hours !== null && a.hours !== undefined).map(a => [a.id, String(a.hours)])),
   // Тип связи в интерфейсе больше не выбирается, но сохранённое значение не теряем
   dependencies: task?.dependencies?.map(d => ({
     depends_on_task_id: d.depends_on_task_id,
@@ -94,6 +96,10 @@ function TaskModal({ task, members, statuses, defaultStatusId, onSave, onDelete,
     setSaving(true);
     const payload = {
       ...formData,
+      // Часы — числом; пустое поле или мусор — «не указано»
+      assigneeHours: Object.fromEntries(Object.entries(formData.assigneeHours)
+        .map(([id, v]) => [id, parseFloat(String(v).replace(',', '.'))])
+        .filter(([, n]) => Number.isFinite(n) && n >= 0)),
       statusId: formData.statusId || undefined,
       dependencies: formData.dependencies.filter(d => d.depends_on_task_id)
     };
@@ -102,12 +108,24 @@ function TaskModal({ task, members, statuses, defaultStatusId, onSave, onDelete,
   };
 
   const handleAssigneeToggle = (userId) => {
-    setFormData(prev => ({
-      ...prev,
-      assigneeIds: prev.assigneeIds.includes(userId)
-        ? prev.assigneeIds.filter(id => id !== userId)
-        : [...prev.assigneeIds, userId]
-    }));
+    setFormData(prev => {
+      const removing = prev.assigneeIds.includes(userId);
+      const assigneeHours = { ...prev.assigneeHours };
+      if (removing) delete assigneeHours[userId];
+      return {
+        ...prev,
+        assigneeIds: removing ? prev.assigneeIds.filter(id => id !== userId) : [...prev.assigneeIds, userId],
+        assigneeHours
+      };
+    });
+  };
+
+  const handleHoursChange = (userId, value) => {
+    setFormData(prev => {
+      const assigneeHours = { ...prev.assigneeHours };
+      if (value === '') delete assigneeHours[userId]; else assigneeHours[userId] = value;
+      return { ...prev, assigneeHours };
+    });
   };
 
   const handleAddDependency = () => {
@@ -254,6 +272,80 @@ function TaskModal({ task, members, statuses, defaultStatusId, onSave, onDelete,
           </div>
           <p className="field-hint">{hasOthers ? t('taskAssigneesHint') : t('taskAssigneesAloneHint')}</p>
         </fieldset>
+
+        {/* Трудоёмкость появляется, как только выбран хотя бы один исполнитель */}
+        {formData.assigneeIds.length > 0 && (() => {
+          const days = taskDays(formData.startDate, formData.endDate);
+          const people = members.filter(m => formData.assigneeIds.includes(m.id));
+          const hoursOf = (id) => {
+            const n = parseFloat(String(formData.assigneeHours[id] ?? '').replace(',', '.'));
+            return Number.isFinite(n) && n >= 0 ? n : 0;
+          };
+          const total = people.reduce((sum, m) => sum + hoursOf(m.id), 0);
+          // Не успевает тот, у кого часов больше, чем 8 ч × дней срока
+          const overloaded = days ? people.filter(m => hoursOf(m.id) / HOURS_PER_DAY > days) : [];
+          return (
+            <fieldset className="form-group form-fieldset effort-fieldset">
+              <legend className="form-legend">{t('effortTitle')}</legend>
+              <p className="field-hint effort-intro">{t('effortIntro')}</p>
+              <ul className="effort-list">
+                {people.map(m => {
+                  const inputId = `effort-${m.id}`;
+                  const over = overloaded.includes(m);
+                  return (
+                    <li key={m.id} className={`effort-row ${over ? 'is-over' : ''}`}>
+                      <label htmlFor={inputId} className="effort-person">
+                        <Avatar name={m.name} src={m.avatar} size="xs" aria-hidden="true" />
+                        <span>{m.name}</span>
+                      </label>
+                      <span className="effort-input-wrap">
+                        <input
+                          id={inputId}
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          max="10000"
+                          step="0.5"
+                          className="effort-input"
+                          value={formData.assigneeHours[m.id] ?? ''}
+                          onChange={(e) => handleHoursChange(m.id, e.target.value)}
+                          placeholder="—"
+                          aria-describedby={over ? `${inputId}-warn` : undefined}
+                        />
+                        <span className="effort-unit" aria-hidden="true">{t('hoursShort')}</span>
+                      </span>
+                      {over && (
+                        <span id={`${inputId}-warn`} className="effort-row-warn">
+                          <Icon name="alert" size={13} />{t('effortRowOver2', { days: formatHours(hoursOf(m.id) / HOURS_PER_DAY, lang) })}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="effort-total">
+                <span>{t('effortTotal')}</span>
+                <strong>{formatHours(total, lang)} {t('hoursShort')}</strong>
+              </p>
+              {/* Предупреждение — сразу под итогом и коротко: подробности уже в строке исполнителя */}
+              {days && overloaded.length > 0 && (
+                <p className="effort-warning" role="status">
+                  <Icon name="alert" size={16} />
+                  <span>{t('effortWarning', { names: overloaded.map(m => m.name).join(', '), days, hours: days * HOURS_PER_DAY })}</span>
+                </p>
+              )}
+              {days ? (
+                <p className="field-hint">{t('effortCapacityHint', {
+                  days, hours: days * HOURS_PER_DAY,
+                  from: formatDate(formData.startDate || formData.endDate, lang),
+                  to: formatDate(formData.endDate || formData.startDate, lang)
+                })}</p>
+              ) : (
+                <p className="field-hint">{t('effortNoDatesHint')}</p>
+              )}
+            </fieldset>
+          );
+        })()}
 
         {(otherTasks.length > 0 || formData.dependencies.length > 0) && (
           <fieldset className="form-group form-fieldset">

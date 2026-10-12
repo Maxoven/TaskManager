@@ -39,6 +39,8 @@ export const getProjects = () => api.get('/projects');
 export const getProject = (id) => api.get(`/projects/${id}`);
 export const createProject = (data) => api.post('/projects', data);
 export const updateProject = (id, data) => api.patch(`/projects/${id}`, data);
+// Кто видит проект: { visibility: 'team' | 'selected', memberIds }
+export const updateProjectAccess = (id, data) => api.put(`/projects/${id}/access`, data);
 export const deleteProject = (id) => api.delete(`/projects/${id}`);
 export const reorderProjects = (projectIds) => api.post('/projects/reorder', { projectIds });
 export const inviteToProject = (projectId, email) =>
@@ -54,6 +56,8 @@ export const createTask = (data) => api.post('/tasks', data);
 export const updateTask = (id, data) => api.patch(`/tasks/${id}`, data);
 export const deleteTask = (id) => api.delete(`/tasks/${id}`);
 export const getMyTasks = () => api.get('/tasks/my');
+// Трудоёмкость по исполнителям команды за период (даты 'YYYY-MM-DD')
+export const getWorkload = (teamId, from, to) => api.get('/tasks/workload', { params: { teamId, from, to } });
 
 // Reports
 export const getReportByToken = (token) => api.get(`/tasks/report-token/${token}`);

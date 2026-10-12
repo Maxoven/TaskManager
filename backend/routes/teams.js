@@ -5,10 +5,11 @@ const pool = require('../config/database');
 const { withTransaction } = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const { sendTeamInvitation } = require('../services/email');
-const { getTeamRole, isManager } = require('../services/access');
+const { getTeamRole, isManager, canManageTeam, teamSeesProjectSql } = require('../services/access');
 
 // Команды: пользователь может состоять в нескольких и переключаться между ними.
-// Роли — owner (создатель), admin (ведёт проекты, приглашает, меняет роли), member (работает с задачами).
+// Роли — owner (создатель: состав команды, роли, все проекты), admin (создаёт проекты и ведёт доступные ему),
+// member (работает с задачами в доступных проектах).
 const router = express.Router();
 router.use(authMiddleware);
 
@@ -30,7 +31,8 @@ async function listMyTeams(userId) {
       (SELECT u.name FROM team_memberships o JOIN users u ON u.id = o.user_id
        WHERE o.team_id = t.id AND o.role = 'owner' LIMIT 1) AS owner_name,
       (SELECT COUNT(*)::int FROM team_memberships m WHERE m.team_id = t.id AND m.status = 'approved') AS members_count,
-      (SELECT COUNT(*)::int FROM projects p WHERE p.team_id = t.id) AS projects_count
+      -- Считаем только проекты, которые видит сам пользователь
+      (SELECT COUNT(*)::int FROM projects p WHERE p.team_id = t.id AND ${teamSeesProjectSql('p', '$1')}) AS projects_count
     FROM team_memberships tm
     JOIN teams t ON t.id = tm.team_id
     WHERE tm.user_id = $1 AND tm.status = 'approved'
@@ -92,7 +94,7 @@ router.get('/invitations', async (req, res) => {
     const { rows } = await pool.query(`
       SELECT t.id AS team_id, t.name AS team_name, tm.role, tm.invited_at,
         inv.name AS inviter_name,
-        (SELECT COUNT(*)::int FROM projects p WHERE p.team_id = t.id) AS projects_count
+        (SELECT COUNT(*)::int FROM projects p WHERE p.team_id = t.id AND p.visibility = 'team') AS projects_count
       FROM team_memberships tm
       JOIN teams t ON t.id = tm.team_id
       LEFT JOIN users inv ON inv.id = tm.invited_by
@@ -144,7 +146,7 @@ router.get('/:teamId', async (req, res) => {
       ORDER BY tm.status = 'pending', CASE tm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.name
     `, [teamId]);
     // Гости — приглашённые в отдельные проекты команды (видят только свой проект). Показываем тем, кто ведёт команду.
-    const { rows: guests } = !isManager(role) ? { rows: [] } : await pool.query(`
+    const { rows: guests } = !canManageTeam(role) ? { rows: [] } : await pool.query(`
       SELECT u.id, u.name, u.email, u.avatar, pm.status, p.id AS project_id, p.name AS project_name
       FROM project_members pm
       JOIN projects p ON p.id = pm.project_id
@@ -154,19 +156,20 @@ router.get('/:teamId', async (req, res) => {
       )
       ORDER BY u.name, p.name
     `, [teamId]);
-    res.json({ ...team, role, can_manage: isManager(role), members, guests });
+    // can_manage — менять состав и роли (только владелец); can_create_projects — владелец и админы
+    res.json({ ...team, role, can_manage: canManageTeam(role), can_create_projects: isManager(role), members, guests });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: req.t('teamFetchError') });
   }
 });
 
-// Переименовать команду
+// Переименовать команду — только владелец
 router.patch('/:teamId', async (req, res) => {
   try {
     const { teamId } = req.params;
-    if (!isManager(await getTeamRole(pool, teamId, req.userId))) {
-      return res.status(403).json({ error: req.t('onlyAdminsManageTeam') });
+    if (!canManageTeam(await getTeamRole(pool, teamId, req.userId))) {
+      return res.status(403).json({ error: req.t('onlyOwnerManageTeam') });
     }
     const name = cleanName(req.body.name);
     if (!name) return res.status(400).json({ error: req.t('teamNameRequired') });
@@ -204,12 +207,12 @@ router.delete('/:teamId', async (req, res) => {
   }
 });
 
-// Пригласить в команду с ролью admin или member
+// Пригласить в команду с ролью admin или member — только владелец
 router.post('/:teamId/members', async (req, res) => {
   try {
     const { teamId } = req.params;
-    if (!isManager(await getTeamRole(pool, teamId, req.userId))) {
-      return res.status(403).json({ error: req.t('onlyAdminsInviteToTeam') });
+    if (!canManageTeam(await getTeamRole(pool, teamId, req.userId))) {
+      return res.status(403).json({ error: req.t('onlyOwnerInviteToTeam') });
     }
     const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
     const role = INVITE_ROLES.includes(req.body.role) ? req.body.role : 'member';
@@ -258,8 +261,8 @@ router.post('/:teamId/members', async (req, res) => {
 router.patch('/:teamId/members/:userId', async (req, res) => {
   try {
     const { teamId, userId } = req.params;
-    if (!isManager(await getTeamRole(pool, teamId, req.userId))) {
-      return res.status(403).json({ error: req.t('onlyAdminsManageTeam') });
+    if (!canManageTeam(await getTeamRole(pool, teamId, req.userId))) {
+      return res.status(403).json({ error: req.t('onlyOwnerManageTeam') });
     }
     const role = req.body.role;
     if (!INVITE_ROLES.includes(role)) return res.status(400).json({ error: req.t('roleInvalid') });
@@ -284,13 +287,18 @@ router.delete('/:teamId/members/:userId', async (req, res) => {
     const myRole = await getTeamRole(pool, teamId, req.userId);
     const self = userId === req.userId;
     if (!myRole) return res.status(403).json({ error: req.t('accessDenied') });
-    if (!self && !isManager(myRole)) return res.status(403).json({ error: req.t('onlyAdminsManageTeam') });
+    if (!self && !canManageTeam(myRole)) return res.status(403).json({ error: req.t('onlyOwnerManageTeam') });
 
     const removed = await withTransaction(async (client) => {
       const { rowCount } = await client.query(
         `DELETE FROM team_memberships WHERE team_id = $1 AND user_id = $2 AND role <> 'owner'`, [teamId, userId]
       );
       if (rowCount === 0) return false;
+      // Отметки «видит проект» в проектах этой команды больше не нужны
+      await client.query(
+        'DELETE FROM project_access WHERE user_id = $2 AND project_id IN (SELECT id FROM projects WHERE team_id = $1)',
+        [teamId, userId]
+      );
       // Снимаем с задач проектов команды — иначе бывший участник продолжит получать напоминания.
       // Гостевой доступ к отдельным проектам (если он был) сохраняется.
       await client.query(`

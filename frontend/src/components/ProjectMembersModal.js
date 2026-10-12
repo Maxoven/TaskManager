@@ -1,23 +1,75 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../context/LanguageContext';
 import { useFeedback } from '../context/FeedbackContext';
-import { inviteToProject, removeProjectMember, leaveProject } from '../services/api';
+import { inviteToProject, removeProjectMember, leaveProject, updateProjectAccess } from '../services/api';
 import apiError from '../utils/apiError';
 import Modal from './Modal';
 import InviteForm from './InviteForm';
 import Icon from './Icon';
 import Avatar from './Avatar';
+import ProjectAccessPicker, { accessFromProject, accessPayload } from './ProjectAccessPicker';
 
 // Роль обозначена значком и словом, а не только цветом
 const ROLE_ICONS = { owner: 'star', admin: 'shield', member: 'users', guest: 'folder', pending: 'clock' };
 
-// «Участники проекта»: команда проекта (все её участники видят проект) и гости —
-// люди, приглашённые только в этот проект. Владелец и админы команды приглашают
-// и убирают гостей; состав команды меняется в настройках команды. Гость может выйти сам.
+// «Участники проекта»: кто из команды видит проект и гости — люди, приглашённые только сюда.
+// Владелец и админы с доступом к проекту меняют «Кто видит проект» и приглашают гостей;
+// состав самой команды меняет владелец в настройках команды. Гость может выйти сам.
 function ProjectMembersModal({ project, members, user, canManage, onChanged, onLeft, onClose }) {
   const { t } = useLanguage();
   const { notify, confirm } = useFeedback();
+  const roster = project.team_roster || [];
+  const [access, setAccess] = useState(() => accessFromProject(project, roster));
+  const [savedAccess, setSavedAccess] = useState(() => accessFromProject(project, roster));
+  const [savingAccess, setSavingAccess] = useState(false);
+  const sameIds = (a, b) => a.size === b.size && [...a].every(id => b.has(id));
+  const accessChanged = access.mode !== savedAccess.mode || (access.mode !== 'team' && !sameIds(access.ids, savedAccess.ids));
+
+  // Кто из команды сейчас видит проект и перестанет видеть после сохранения (владелец и я — всегда видим)
+  const hasAccess = (value, m) => m.role === 'owner' || m.id === user?.id || value.mode === 'team' || value.ids.has(m.id);
+  const losing = roster.filter(m => hasAccess(savedAccess, m) && !hasAccess(access, m));
+
+  // Возвращает true, если доступ сохранён
+  const handleSaveAccess = async () => {
+    if (losing.length > 0) {
+      const ok = await confirm({
+        title: t('accessLoseTitle'),
+        message: t('accessLoseMessage', { names: losing.map(m => m.name).join(', ') }),
+        confirmLabel: t('accessLoseConfirm'),
+        danger: true
+      });
+      if (!ok) return false;
+    }
+    setSavingAccess(true);
+    try {
+      await updateProjectAccess(project.id, accessPayload(access));
+      setSavedAccess(access);
+      notify.success(losing.length > 0
+        ? t('accessSavedLostToast', { names: losing.map(m => m.name).join(', ') })
+        : t('accessSavedToast'));
+      onChanged();
+      return true;
+    } catch (err) {
+      notify.error(apiError(err, t, 'accessSaveError'));
+      return false;
+    } finally {
+      setSavingAccess(false);
+    }
+  };
+
+  // Закрытие с несохранённым доступом — спрашиваем, а не теряем молча
+  const handleClose = async () => {
+    if (!canManage || !accessChanged) { onClose(); return; }
+    const save = await confirm({
+      title: t('accessUnsavedTitle'),
+      message: t('accessUnsavedMessage'),
+      confirmLabel: t('save'),
+      cancelLabel: t('dontSave')
+    });
+    if (save && !(await handleSaveAccess())) return;
+    onClose();
+  };
 
   const keyOf = (m) => (m.status === 'pending' ? 'pending' : m.role);
   const RANK = { owner: 0, admin: 1, member: 2, guest: 3, pending: 4 };
@@ -115,14 +167,20 @@ function ProjectMembersModal({ project, members, user, canManage, onChanged, onL
   };
 
   return (
-    <Modal title={t('membersModalTitle')} description={t('membersModalIntro', { team: project.team_name || '' })} onClose={onClose} className="members-modal">
-      <h3 className="people-group-title">{t('membersTeamGroup', { team: project.team_name || '' })}</h3>
-      <ul className="people-list">{teamPeople.map(renderPerson)}</ul>
-      {canManage && (
-        <p className="field-hint people-group-hint">
-          {t('membersTeamManagedHint')}{' '}
-          <Link to="/?tab=team" onClick={onClose}>{t('openTeamSettingsLink')}</Link>
-        </p>
+    <Modal title={t('membersModalTitle')} description={t('membersModalIntro', { team: project.team_name || '' })} onClose={handleClose} className="members-modal">
+      {canManage ? (
+        <section className="members-access">
+          <ProjectAccessPicker roster={roster} selfId={user?.id} value={access} onChange={setAccess} disabled={savingAccess} />
+          <p className="field-hint people-group-hint">
+            {t(project.my_role === 'owner' ? 'membersTeamManagedHintOwner' : 'membersTeamManagedHint')}{' '}
+            <Link to="/?tab=team" onClick={onClose}>{t('openTeamSettingsLink')}</Link>
+          </p>
+        </section>
+      ) : (
+        <>
+          <h3 className="people-group-title">{t('membersTeamGroup', { team: project.team_name || '' })}</h3>
+          <ul className="people-list">{teamPeople.map(renderPerson)}</ul>
+        </>
       )}
 
       <h3 className="people-group-title">{t('membersGuestsGroup')}</h3>
@@ -148,9 +206,19 @@ function ProjectMembersModal({ project, members, user, canManage, onChanged, onL
         <p className="field-hint members-leave">{t('onlyAdminsInviteHint')}</p>
       )}
 
+      {/* Нижняя панель закреплена — «Сохранить доступ» всегда под рукой, и на телефоне тоже */}
       <div className="modal-actions">
+        {canManage && accessChanged && <span className="field-hint members-unsaved">{t('accessUnsavedHint')}</span>}
         <div className="modal-actions-right">
-          <button type="button" className="btn-secondary" onClick={onClose}>{t('close')}</button>
+          {/* С несохранёнными изменениями «Отмена» возвращает прежний доступ, не закрывая окно */}
+          <button type="button" className="btn-secondary" onClick={canManage && accessChanged ? () => setAccess(savedAccess) : handleClose}>
+            {canManage && accessChanged ? t('accessResetBtn') : t('close')}
+          </button>
+          {canManage && (
+            <button type="button" className="btn-primary" onClick={handleSaveAccess} disabled={!accessChanged || savingAccess}>
+              {savingAccess ? t('saving') : t('accessSaveBtn')}
+            </button>
+          )}
         </div>
       </div>
     </Modal>
