@@ -115,7 +115,7 @@ function ProjectCard({ project, canManage, onEdit, onDelete }) {
 function Dashboard({ user, onLogout }) {
   const { t, lang } = useLanguage();
   const { notify, confirm } = useFeedback();
-  const { invitations: teamInvitations, current, currentTeam, selectTeam, refresh: refreshTeams, loaded: teamsLoaded } = useTeams();
+  const { invitations: teamInvitations, sharedCount, current, currentTeam, selectTeam, refresh: refreshTeams, loaded: teamsLoaded } = useTeams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [projects, setProjects] = useState([]);
   const [invitations, setInvitations] = useState([]);
@@ -332,7 +332,7 @@ function Dashboard({ user, onLogout }) {
         <p className="team-context">
           <Avatar name={currentTeam.name} size="sm" square aria-hidden="true" />
           <span>
-            {t('teamContext', { team: currentTeam.name })}{' '}
+            {t('teamContextBefore')} <strong className="team-context-name">«{currentTeam.name}»</strong>:{' '}
             <strong className={`role-chip role-chip-${myRole}`}>{t(ROLE_LABEL_KEYS[myRole])}</strong>
             {' — '}{t(`roleShort_${myRole}`)}
           </span>
@@ -353,7 +353,7 @@ function Dashboard({ user, onLogout }) {
                     {t('teamInviteFrom', { name: inv.inviter_name || '—' })}{' '}
                     <strong className={`role-chip role-chip-${inv.role}`}>{t(ROLE_LABEL_KEYS[inv.role])}</strong>
                   </p>
-                  <p className="invitation-desc">{t(`roleLong_${inv.role}`)}</p>
+                  <p className="invitation-desc">{t(`roleInvite_${inv.role}`)}</p>
                 </div>
                 <div className="invitation-actions">
                   <button type="button" disabled={busyKey === `team-inv-${inv.team_id}`} onClick={() => handleTeamInvitationResponse(inv, 'approve')} className="btn-primary">{t('inviteAccept')}</button>
@@ -376,7 +376,6 @@ function Dashboard({ user, onLogout }) {
                 <div className="invitation-body">
                   <h3>{inv.name}</h3>
                   <p>{t('projectInviteText', { name: inv.owner_name, team: inv.team_name || '' })}</p>
-                  {inv.description && <p className="invitation-desc">{inv.description}</p>}
                 </div>
                 <div className="invitation-actions">
                   <button type="button" disabled={busyKey === `project-inv-${inv.id}`} onClick={() => handleInvitationResponse(inv, 'approve')} className="btn-primary">{t('inviteAccept')}</button>
@@ -450,7 +449,6 @@ function Dashboard({ user, onLogout }) {
               <div className="section-header">
                 <h2>{t('sharedProjectsTitle')}</h2>
               </div>
-              <p className="section-intro">{t('sharedProjectsIntro')}</p>
               {sharedGroups.map(group => (
                 <section key={group.teamId} className="owner-group">
                   <h3 className="owner-group-title"><Avatar name={group.name} size="sm" square aria-hidden="true" />{t('sharedGroupTitle', { team: group.name })}</h3>
@@ -464,7 +462,7 @@ function Dashboard({ user, onLogout }) {
             <>
               <div className="section-header">
                 <h2>{t('teamProjectsTitle')}</h2>
-                {canManage && (
+                {canManage && scopeProjects.length > 0 && (
                   <div className="section-actions">
                     {scopeProjects.length > 1 && (
                       <button type="button" onClick={handleStartSort} className="btn-secondary"><Icon name="reorder" />{t('reorderBtn')}</button>
@@ -476,7 +474,7 @@ function Dashboard({ user, onLogout }) {
               {!canManage && (
                 <p className="role-note">
                   <Icon name="info" size={16} />
-                  <span>{t('memberProjectsNote')}</span>
+                  <span>{t('memberProjectsNote')}{currentTeam?.owner_name && <> {t('askOwnerForProject', { name: currentTeam.owner_name })}</>}</span>
                 </p>
               )}
 
@@ -486,6 +484,12 @@ function Dashboard({ user, onLogout }) {
                   <p className="empty-state-title">{t('noTeamProjects')}</p>
                   <p>{canManage ? t('noProjectsHint') : t('noTeamProjectsMemberHint')}</p>
                   {canManage && <button type="button" onClick={openCreate} className="btn-primary"><Icon name="plus" />{t('createProject')}</button>}
+                  {sharedCount > 0 && (
+                    <p className="empty-state-extra">
+                      {t('sharedProjectsWaiting', { count: sharedCount })}{' '}
+                      <button type="button" className="btn-link" onClick={() => selectTeam(SHARED)}>{t('openSharedProjects')}</button>
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="projects-grid">

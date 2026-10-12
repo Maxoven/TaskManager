@@ -15,7 +15,7 @@ export const ROLE_LABEL_KEYS = { owner: 'roleOwner', admin: 'roleAdmin', member:
 function TeamSwitcher() {
   const { t } = useLanguage();
   const navigate = useNavigate();
-  const { teams, invitations, sharedCount, current, currentTeam, selectTeam, refresh, loaded } = useTeams();
+  const { teams, invitesTotal, sharedCount, current, currentTeam, selectTeam, refresh, loaded } = useTeams();
   const { open, setOpen, close, rootRef, buttonRef } = usePopover();
   const [creating, setCreating] = useState(false);
 
@@ -69,8 +69,8 @@ function TeamSwitcher() {
           ? <span className="team-switcher-shared-icon" aria-hidden="true"><Icon name="folder" size={14} /></span>
           : <Avatar name={label} size="sm" square aria-hidden="true" />}
         <span className="team-switcher-name">{label}</span>
-        {invitations.length > 0 && (
-          <span className="team-switcher-dot" title={t('teamInvitesPendingTitle', { count: invitations.length })} aria-hidden="true" />
+        {invitesTotal > 0 && (
+          <span className="team-switcher-dot" title={t('invitesPendingTitle', { count: invitesTotal })} aria-hidden="true" />
         )}
         <Icon name="chevron-down" size={14} className="team-switcher-chevron" />
       </button>
@@ -110,11 +110,11 @@ function TeamSwitcher() {
             )}
           </ul>
 
-          {invitations.length > 0 && (
+          {invitesTotal > 0 && (
             <button type="button" className="team-switcher-action team-switcher-invites" onClick={openInvitations}>
               <Icon name="mail" size={16} />
-              <span>{t('teamInvitesPendingAction')}</span>
-              <span className="count-badge">{invitations.length}</span>
+              <span>{t('invitesPendingAction')}</span>
+              <span className="count-badge">{invitesTotal}</span>
             </button>
           )}
 

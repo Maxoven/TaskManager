@@ -26,10 +26,11 @@ function ProjectMembersModal({ project, members, user, canManage, onChanged, onL
 
   const roleOf = (m) => {
     const key = keyOf(m);
+    // Те же описания ролей, что в настройках команды
     const labels = {
-      owner: ['roleOwner', 'roleOwnerHint'],
-      admin: ['roleAdmin', 'roleAdminHint'],
-      member: ['roleMember', 'roleMemberHint'],
+      owner: ['roleOwner', 'roleLong_owner'],
+      admin: ['roleAdmin', 'roleLong_admin'],
+      member: ['roleMember', 'roleLong_member'],
       guest: ['roleGuest', 'roleGuestHint'],
       pending: ['rolePending', 'rolePendingHint']
     }[key];
@@ -101,7 +102,7 @@ function ProjectMembersModal({ project, members, user, canManage, onChanged, onL
           <span className="people-email">{member.email}</span>
           <span className={`people-role people-role-${role.key}`}>
             <Icon name={ROLE_ICONS[role.key]} size={13} />
-            <span><strong>{role.label}</strong> — {role.hint}</span>
+            <span><strong>{role.label}.</strong> {role.hint.charAt(0).toUpperCase() + role.hint.slice(1)}</span>
           </span>
         </div>
         {removable && (

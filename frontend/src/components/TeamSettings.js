@@ -3,7 +3,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useFeedback } from '../context/FeedbackContext';
 import { canManageRole } from '../context/TeamContext';
 import {
-  getTeamDetails, renameTeam, deleteTeam, inviteToTeam, changeTeamRole, removeTeamMember
+  getTeamDetails, renameTeam, deleteTeam, inviteToTeam, changeTeamRole, removeTeamMember, removeProjectMember
 } from '../services/api';
 import apiError from '../utils/apiError';
 import InviteForm from './InviteForm';
@@ -54,7 +54,7 @@ function TeamSettings({ teamId, user, onChanged }) {
 
   const handleInvite = async (email) => {
     const res = await inviteToTeam(teamId, email, inviteRole);
-    notify.success(t('teamInviteSentToast', { name: res.data.member.name, role: t(ROLE_LABEL_KEYS[inviteRole]).toLowerCase() }));
+    notify.success(t('teamInviteSentToast', { name: res.data.member.name, role: t(ROLE_LABEL_KEYS[inviteRole]) }));
     await afterChange();
   };
 
@@ -74,7 +74,7 @@ function TeamSettings({ teamId, user, onChanged }) {
     setBusyId(member.id);
     try {
       await changeTeamRole(teamId, member.id, role);
-      notify.success(t('roleChangedToast', { name: member.name, role: t(ROLE_LABEL_KEYS[role]).toLowerCase() }));
+      notify.success(t('roleChangedToast', { name: member.name, role: t(ROLE_LABEL_KEYS[role]) }));
       await afterChange();
     } catch (err) {
       notify.error(apiError(err, t, 'roleUpdateError'));
@@ -105,6 +105,31 @@ function TeamSettings({ teamId, user, onChanged }) {
       await afterChange();
     } catch (err) {
       notify.error(apiError(err, t, 'teamRemoveError'));
+    }
+  };
+
+  const handleRemoveGuest = async (guest) => {
+    const isPending = guest.status === 'pending';
+    const ok = await confirm(isPending
+      ? {
+        title: t('cancelProjectInviteTitle', { name: guest.name }),
+        message: t('cancelProjectInviteMessage'),
+        confirmLabel: t('cancelInviteBtn'),
+        cancelLabel: t('keepBtn')
+      }
+      : {
+        title: t('removeMemberTitle', { name: guest.name }),
+        message: t('removeMemberMessage'),
+        confirmLabel: t('removeFromProjectBtn'),
+        danger: true
+      });
+    if (!ok) return;
+    try {
+      await removeProjectMember(guest.project_id, guest.id);
+      notify.success(isPending ? t('inviteCancelledToast') : t('memberRemovedToast', { name: guest.name }));
+      await afterChange();
+    } catch (err) {
+      notify.error(apiError(err, t, 'memberRemoveError'));
     }
   };
 
@@ -160,7 +185,7 @@ function TeamSettings({ teamId, user, onChanged }) {
           </span>
           <span className="team-member-email">{member.email}</span>
           {isPending && member.invited_by_name && (
-            <span className="team-member-meta">{t('invitedByAs', { name: member.invited_by_name, role: t(ROLE_LABEL_KEYS[member.role]).toLowerCase() })}</span>
+            <span className="team-member-meta">{t('invitedBy', { name: member.invited_by_name })}</span>
           )}
         </div>
         <div className="team-member-controls">
@@ -212,22 +237,9 @@ function TeamSettings({ teamId, user, onChanged }) {
         )}
       </div>
 
-      {/* Что умеет каждая роль — прямо рядом с выбором роли и списком */}
-      <section className="roles-explainer" aria-labelledby="roles-title">
-        <h3 id="roles-title">{t('rolesTitle')}</h3>
-        <ul>
-          {['owner', 'admin', 'member'].map(r => (
-            <li key={r} className={`roles-explainer-item ${team.role === r ? 'is-mine' : ''}`}>
-              <span className={`roles-explainer-icon role-chip-${r}`} aria-hidden="true"><Icon name={ROLE_ICONS[r]} size={16} /></span>
-              <span>
-                <strong>{t(ROLE_LABEL_KEYS[r])}</strong>
-                {team.role === r && <span className="roles-explainer-you"> · {t('thisIsYou')}</span>}
-                <span className="roles-explainer-text">{t(`roleLong_${r}`)}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </section>
+      {approved.length === 1 && pending.length === 0 && canManage && (
+        <p className="role-note team-alone-hint"><Icon name="info" size={16} /><span>{t('teamAloneHint')}</span></p>
+      )}
 
       {canManage && (
         <section className="team-add-form" aria-labelledby="team-invite-title">
@@ -253,9 +265,26 @@ function TeamSettings({ teamId, user, onChanged }) {
         </section>
       )}
 
+      {/* Что умеет каждая роль — прямо рядом с выбором роли и списком */}
+      <section className="roles-explainer" aria-labelledby="roles-title">
+        <h3 id="roles-title">{t('rolesTitle')}</h3>
+        <ul>
+          {['owner', 'admin', 'member'].map(r => (
+            <li key={r} className={`roles-explainer-item ${team.role === r ? 'is-mine' : ''}`}>
+              <span className={`roles-explainer-icon role-chip-${r}`} aria-hidden="true"><Icon name={ROLE_ICONS[r]} size={16} /></span>
+              <span>
+                <strong>{t(ROLE_LABEL_KEYS[r])}</strong>
+                {team.role === r && <span className="roles-explainer-you"> · {t('thisIsYou')}</span>}
+                <span className="roles-explainer-text">{t(`roleLong_${r}`)}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
       <section aria-labelledby="team-members-title">
         <h3 id="team-members-title" className="team-list-title">{t('teamMembersTitle', { count: approved.length })}</h3>
-        {!canManage && <p className="team-hint">{t('memberTeamListHint')}</p>}
+        <p className="team-hint">{canManage ? t('roleChangeImmediateHint') : t('memberTeamListHint')}</p>
         <ul className="team-list">{approved.map(renderMember)}</ul>
         {pending.length > 0 && (
           <>
@@ -263,8 +292,31 @@ function TeamSettings({ teamId, user, onChanged }) {
             <ul className="team-list">{pending.map(renderMember)}</ul>
           </>
         )}
-        {approved.length === 1 && pending.length === 0 && canManage && (
-          <p className="team-hint team-alone-hint">{t('teamAloneHint')}</p>
+        {canManage && team.guests?.length > 0 && (
+          <>
+            <h3 className="team-list-title">{t('teamGuestsTitle', { count: team.guests.length })}</h3>
+            <p className="team-hint">{t('teamGuestsHint')}</p>
+            <ul className="team-list">
+              {team.guests.map(g => (
+                <li key={`${g.id}-${g.project_id}`} className={`team-member-card ${g.status === 'pending' ? 'team-member-pending' : ''}`}>
+                  <Avatar name={g.name} src={g.avatar} size="lg" muted={g.status === 'pending'} className="team-member-avatar" aria-hidden="true" />
+                  <div className="team-member-info">
+                    <span className="team-member-name">
+                      {g.name}
+                      {g.status === 'pending' && <span className="pending-badge chip chip-pending"><Icon name="clock" size={12} />{t('teamPending')}</span>}
+                    </span>
+                    <span className="team-member-email">{g.email}</span>
+                    <span className="team-member-meta"><Icon name="folder" size={12} /> {t('guestInProject', { project: g.project_name })}</span>
+                  </div>
+                  <div className="team-member-controls">
+                    <button type="button" onClick={() => handleRemoveGuest(g)} className="btn-small btn-small-danger">
+                      {g.status === 'pending' ? t('cancelInviteBtn') : t('removeGuestBtn')}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </section>
 

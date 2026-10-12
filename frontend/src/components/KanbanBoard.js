@@ -215,7 +215,7 @@ function KanbanBoard({ user, onLogout }) {
   const pendingMembers = members.filter(m => m.status === 'pending');
   // Вести проект (название, гости) могут владелец и админы команды; задачи — все участники
   const canManage = !!project?.can_manage;
-  const ROLE_TAGS = { owner: 'roleTagOwner', admin: 'roleTagAdmin', guest: 'roleTagGuest' };
+  const ROLE_TAGS = { owner: 'roleTagOwner', admin: 'roleTagAdmin', member: 'roleTagMember', guest: 'roleTagGuest' };
 
   const filterActive = filterAssignee !== 'all';
 
@@ -312,7 +312,7 @@ function KanbanBoard({ user, onLogout }) {
           {/* Одна точка входа для всего, что связано с доступом к проекту */}
           <button type="button" className="btn-small btn-members" onClick={() => setShowMembersModal(true)}>
             <Icon name="users" size={15} />
-            {canManage ? t('membersManageBtn') : t('membersViewBtn')}
+            {t('membersBtn')}
           </button>
         </div>
 

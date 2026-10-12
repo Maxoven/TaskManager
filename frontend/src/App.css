@@ -425,7 +425,7 @@ input[type='checkbox'] {
 .avatar-xs { width: 20px; height: 20px; font-size: 0.625rem; }
 .avatar-sm { width: 24px; height: 24px; font-size: 0.6875rem; }
 .avatar-lg { width: 40px; height: 40px; font-size: var(--text-base); }
-.avatar-xl { width: 72px; height: 72px; font-size: 1.75rem; }
+.avatar-xl { width: 64px; height: 64px; font-size: 1.5rem; }
 
 /* Фото профиля заполняет кружок целиком */
 .avatar-photo {

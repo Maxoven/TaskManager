@@ -27,6 +27,8 @@ const cleanName = (value) => (typeof value === 'string' ? value.trim().slice(0, 
 async function listMyTeams(userId) {
   const { rows } = await pool.query(`
     SELECT t.id, t.name, t.created_by, tm.role,
+      (SELECT u.name FROM team_memberships o JOIN users u ON u.id = o.user_id
+       WHERE o.team_id = t.id AND o.role = 'owner' LIMIT 1) AS owner_name,
       (SELECT COUNT(*)::int FROM team_memberships m WHERE m.team_id = t.id AND m.status = 'approved') AS members_count,
       (SELECT COUNT(*)::int FROM projects p WHERE p.team_id = t.id) AS projects_count
     FROM team_memberships tm
@@ -141,7 +143,18 @@ router.get('/:teamId', async (req, res) => {
       WHERE tm.team_id = $1
       ORDER BY tm.status = 'pending', CASE tm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.name
     `, [teamId]);
-    res.json({ ...team, role, can_manage: isManager(role), members });
+    // Гости — приглашённые в отдельные проекты команды (видят только свой проект). Показываем тем, кто ведёт команду.
+    const { rows: guests } = !isManager(role) ? { rows: [] } : await pool.query(`
+      SELECT u.id, u.name, u.email, u.avatar, pm.status, p.id AS project_id, p.name AS project_name
+      FROM project_members pm
+      JOIN projects p ON p.id = pm.project_id
+      JOIN users u ON u.id = pm.user_id
+      WHERE p.team_id = $1 AND NOT EXISTS (
+        SELECT 1 FROM team_memberships tm WHERE tm.team_id = $1 AND tm.user_id = pm.user_id AND tm.status = 'approved'
+      )
+      ORDER BY u.name, p.name
+    `, [teamId]);
+    res.json({ ...team, role, can_manage: isManager(role), members, guests });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: req.t('teamFetchError') });

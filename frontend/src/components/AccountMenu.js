@@ -106,7 +106,7 @@ function AccountMenu({ user }) {
                   {photoBusy ? t('photoUploading') : user.avatar ? t('photoChange') : t('photoUpload')}
                 </button>
                 {user.avatar && (
-                  <button type="button" className="btn-small btn-small-danger" onClick={handleRemovePhoto} disabled={photoBusy}>
+                  <button type="button" className="account-menu-photo-remove" onClick={handleRemovePhoto} disabled={photoBusy}>
                     {t('photoRemove')}
                   </button>
                 )}
