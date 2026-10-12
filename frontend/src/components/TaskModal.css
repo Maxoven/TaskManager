@@ -356,7 +356,7 @@
   background: var(--status-warning-bg);
 }
 
-.effort-person {
+.effort-list .effort-person {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -367,7 +367,7 @@
   font-weight: var(--weight-regular);
 }
 
-.effort-person span {
+.effort-list .effort-person span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -398,7 +398,7 @@
 .effort-row-warn {
   flex-basis: 100%;
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
   color: var(--status-warning-fg);
   font-size: var(--text-xs);
@@ -434,6 +434,11 @@
 }
 
 .effort-warning .icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.effort-row-warn .icon {
   flex-shrink: 0;
   margin-top: 2px;
 }

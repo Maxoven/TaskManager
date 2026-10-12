@@ -30,8 +30,8 @@ function presetRange(kind) {
 
 const PRESETS = ['week', 'month', 'nextMonth'];
 
-// Часы в отчёте — с одним знаком: доля часов за период редко бывает «круглой»
-const h1 = (value, lang) => formatHours(value, lang, 1);
+// Часы в отчёте — как на карточке задачи (до двух знаков), чтобы цифры совпадали везде
+const h1 = (value, lang) => formatHours(value, lang, 2);
 
 // CSV для Excel: точка с запятой и BOM, чтобы кириллица открывалась без настройки
 function downloadCsv(data, t) {
@@ -183,7 +183,9 @@ function Workload({ team }) {
                           <span className="workload-task-meta">
                             {task.project_name}
                             {' · '}
-                            {task.start ? `${formatDate(task.start, lang)} — ${formatDate(task.end, lang)}` : t('workloadNoDates')}
+                            {task.start
+                              ? <><span className="nowrap">{formatDate(task.start, lang)}</span> — <span className="nowrap">{formatDate(task.end, lang)}</span></>
+                              : t('workloadNoDates')}
                           </span>
                           <span className="workload-task-hours">
                             {task.hours_in_period === null
