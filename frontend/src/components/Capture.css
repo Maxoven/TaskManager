@@ -1,0 +1,438 @@
+/* Быстрое добавление (Q) и голосовой ввод (Shift+Q) — как Quick Add и Ramble в Todoist */
+
+/* ── Быстрое добавление ── */
+.modal.quick-add-modal {
+  max-width: 600px;
+}
+
+.quick-add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.quick-add-field {
+  position: relative;
+}
+
+.quick-add .quick-add-title {
+  width: 100%;
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+}
+
+.quick-add .quick-add-desc {
+  resize: vertical;
+  min-height: 56px;
+}
+
+.quick-add-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.quick-add-suggestions button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 34px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.quick-add-suggestions button:hover,
+.quick-add-suggestions button.active {
+  background: var(--color-primary-soft);
+}
+
+.quick-add-suggestion-team {
+  margin-left: auto;
+  color: var(--color-text-faint);
+  font-size: var(--text-xs);
+}
+
+.quick-add-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.chip-token {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary-soft-border);
+  color: var(--color-primary-text);
+}
+
+.chip-token button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.chip-token button:hover {
+  background: var(--color-primary-soft-border);
+}
+
+.quick-add-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.quick-add-options,
+.quick-add-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Компактный выбор срока и места: значок + системный выбор даты/проекта без рамки */
+.quick-add-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-height-sm);
+  max-width: 100%;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.quick-add-option:focus-within {
+  border-color: var(--color-focus);
+  box-shadow: var(--ring);
+}
+
+/* Класс повторён намеренно: общие стили полей (App.css) заданы через input:not(…):not(…) и сильнее одного класса */
+.quick-add-option.quick-add-option input[type='date'],
+.quick-add-option.quick-add-option select {
+  width: auto;
+  min-height: 0;
+  max-width: 200px;
+  padding: 2px 0;
+  border: 0;
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--color-text);
+  font-size: var(--text-sm);
+}
+
+.quick-add-option.quick-add-option select {
+  padding-right: 22px;
+  background-position: right 0 center;
+}
+
+.quick-add-option.quick-add-option input[type='date']:focus,
+.quick-add-option.quick-add-option select:focus,
+.quick-add-option.quick-add-option input[type='date']:hover,
+.quick-add-option.quick-add-option select:hover {
+  box-shadow: none;
+  outline: none;
+}
+
+.quick-add-voice {
+  gap: 6px;
+}
+
+.quick-add-help {
+  margin: 0;
+  color: var(--color-text-faint);
+  font-size: var(--text-xs);
+}
+
+/* ── Голосовой ввод ── */
+.modal.voice-modal {
+  max-width: 640px;
+}
+
+.voice-capture {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.voice-stage {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-sunken);
+}
+
+.voice-mic {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-primary-text);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+
+.voice-mic:active {
+  transform: scale(0.96);
+}
+
+.voice-mic-live {
+  background: var(--status-danger-solid);
+  color: var(--color-on-solid);
+}
+
+/* Пульсация, пока идёт запись */
+.voice-mic-live::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: inherit;
+  border: 2px solid var(--status-danger-solid);
+  opacity: 0;
+  animation: voice-pulse 1.6s var(--ease-out) infinite;
+}
+
+@keyframes voice-pulse {
+  0% { transform: scale(0.9); opacity: 0.6; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+
+.voice-stage-text {
+  min-width: 0;
+}
+
+.voice-status {
+  margin: 0 0 2px;
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.voice-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.voice-transcript {
+  margin: 0;
+  min-height: 48px;
+  max-height: 140px;
+  overflow-y: auto;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  line-height: var(--leading-normal);
+}
+
+.voice-transcript-empty {
+  color: var(--color-text-faint);
+}
+
+.voice-interim::after {
+  content: '…';
+  color: var(--color-text-faint);
+}
+
+.voice-typed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.voice-typed textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.voice-results-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.voice-results-head h3 {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+.voice-parsing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.voice-results-empty {
+  margin: 0;
+  color: var(--color-text-faint);
+  font-size: var(--text-sm);
+}
+
+.voice-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: min(40vh, 360px);
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.voice-task {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  animation: fade-in var(--dur) var(--ease-out);
+}
+
+.voice-task > input[type='checkbox'] {
+  margin-top: 8px;
+}
+
+.voice-task-off {
+  opacity: 0.55;
+}
+
+.voice-task-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.voice-task .voice-task-title {
+  width: 100%;
+  font-weight: var(--weight-medium);
+}
+
+.voice-task-desc {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.voice-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.voice-privacy {
+  margin: 0;
+  color: var(--color-text-faint);
+  font-size: var(--text-xs);
+}
+
+/* ── Перенос во «Входящих» в проект ── */
+.modal.move-modal {
+  max-width: 520px;
+}
+
+.move-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.move-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-height-sm);
+  padding: 2px var(--space-3) 2px var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.move-person-on {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary-soft-border);
+}
+
+.move-due-hint {
+  margin: 8px 0 0;
+}
+
+@media (max-width: 600px) {
+  .quick-add-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .quick-add-actions {
+    justify-content: flex-end;
+  }
+
+  .voice-stage {
+    padding: var(--space-3);
+  }
+
+  .voice-mic {
+    width: 52px;
+    height: 52px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-mic-live::after,
+  .voice-task {
+    animation: none;
+  }
+}

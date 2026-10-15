@@ -507,3 +507,7 @@ router.delete('/:taskId/attachments/:fileId', requireTaskAccess, async (req, res
 });
 
 module.exports = router;
+// Для «Входящих»: перенос записи в проект создаёт задачу по тем же правилам
+module.exports.helpers = {
+  hasProjectAccess, statusBelongsToProject, saveAssignees, notifyAssigneesInBackground, datesInvalid
+};

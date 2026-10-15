@@ -9,6 +9,7 @@ import { useFeedback } from '../context/FeedbackContext';
 import apiError from '../utils/apiError';
 import GanttChart from './GanttChart';
 import { useLanguage } from '../context/LanguageContext';
+import { useInbox, useInboxDefaultProject } from '../context/InboxContext';
 import { useTeams, SHARED } from '../context/TeamContext';
 import AppHeader from './AppHeader';
 import { formatDate, parseDate, deadlineState, formatHours, DEADLINE_CHIP, DEADLINE_ICON } from '../utils/date';
@@ -47,6 +48,15 @@ function KanbanBoard({ user, onLogout }) {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadProject(); }, [id]);
+
+  // Быстрое добавление (Q) и голосовой ввод отсюда по умолчанию кладут задачи в этот проект;
+  // когда задачи туда добавлены или перенесены из «Входящих» — обновляем доску
+  useInboxDefaultProject(Number(id));
+  const inboxChange = useInbox()?.change;
+  useEffect(() => {
+    if (inboxChange?.projectIds.includes(Number(id))) loadProject();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inboxChange]);
 
   const loadProject = async () => {
     try {

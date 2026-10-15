@@ -12,6 +12,7 @@ const reportRoutes = require('./routes/reports');
 const teamRoutes = require('./routes/teams');
 const assistantRoutes = require('./routes/assistant');
 const avatarRoutes = require('./routes/avatars');
+const inboxRoutes = require('./routes/inbox');
 const { startScheduler } = require('./services/scheduler');
 
 // Без секрета jwt.sign/verify падают на каждом запросе — лучше не стартовать вовсе
@@ -38,6 +39,7 @@ app.use('/api/projects', projectRoutes);
 // Публичные маршруты отчётов (magic link из письма, без авторизации) — до taskRoutes
 app.use('/api/tasks/report-token', reportRoutes);
 app.use('/api/tasks', taskRoutes);
+app.use('/api/inbox', inboxRoutes);
 app.use('/api/teams', teamRoutes);
 app.use('/api/assistant', assistantRoutes);
 

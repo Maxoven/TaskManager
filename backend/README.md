@@ -39,7 +39,7 @@ backend/
 ├── server.js             # точка входа
 ├── config/database.js    # пул PostgreSQL, withTransaction
 ├── middleware/           # auth (JWT), lang (язык ответа), rateLimit
-├── routes/               # auth, avatars, projects, tasks, reports (magic link), teams, assistant (ИИ)
+├── routes/               # auth, avatars, projects, tasks, reports (magic link), teams, inbox (входящие, голос), assistant (ИИ)
 ├── services/             # access (права), email, scheduler (напоминания), ai (DeepSeek), fileReader (чтение файлов для ИИ)
 ├── i18n/messages.js      # тексты ответов API (ru/en)
 ├── scripts/              # init-db, migrate-from-mysql
@@ -62,6 +62,12 @@ backend/
 Отдельно можно пригласить человека только в один проект (`project_members`) — это гость с правами участника в этом проекте. Все проверки прав — в `services/access.js`.
 
 При первом `npm run db:init` после обновления старая модель «одна команда на владельца» (`team_members`) переносится автоматически: у каждого владельца проектов появляется своя команда, прежние участники становятся `member`, а их проекты получают `visibility = 'team'` (доступ не меняется); старая таблица переименовывается в `team_members_legacy`.
+
+## Входящие и голосовой ввод
+
+Как Inbox, Quick Add и Ramble в Todoist. «Входящие» (`inbox_items`) — личный список задач пользователя, записанных на ходу; другим не виден. Из любого места: `Q` — быстро добавить (строка вида «Позвонить завтра #Офис» сама распознаёт срок и проект), `Shift+Q` — надиктовать. Разбирая входящие, запись переносят в проект (`POST /api/inbox/move`) — она становится обычной задачей в выбранной колонке с исполнителями.
+
+Речь в текст переводит браузер (Web Speech API: Chrome, Edge, Safari; в Firefox — ввод текстом), а текст на задачи разбирает DeepSeek (`POST /api/inbox/voice/parse`), поэтому голосовой ввод работает только при заданном `DEEPSEEK_API_KEY`. Звук на сервер не передаётся и не хранится.
 
 ## Развёртывание
 

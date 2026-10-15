@@ -10,10 +10,12 @@ import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
 import ReportForm from './components/ReportForm';
 import VerifyEmail from './components/VerifyEmail';
+import Inbox from './components/Inbox';
 import { LanguageProvider } from './context/LanguageContext';
 import { FeedbackProvider } from './context/FeedbackContext';
 import { TeamProvider } from './context/TeamContext';
 import { UserProvider } from './context/UserContext';
+import { InboxProvider } from './context/InboxContext';
 import { getMe } from './services/api';
 
 function App() {
@@ -60,6 +62,7 @@ function App() {
       <UserProvider value={userValue}>
       <TeamProvider userId={token ? user?.id : null}>
       <Router>
+        <InboxProvider enabled={!!token && !!user}>
         <div className="app">
           <Routes>
             <Route path="/login" element={!token ? <Login onLogin={handleLogin} /> : <Navigate to="/" />} />
@@ -70,8 +73,10 @@ function App() {
             <Route path="/report/:token" element={<ReportForm />} />
             <Route path="/" element={token ? <Dashboard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />
             <Route path="/project/:id" element={token ? <KanbanBoard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />
+            <Route path="/inbox" element={token ? <Inbox user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />
           </Routes>
         </div>
+        </InboxProvider>
       </Router>
       </TeamProvider>
       </UserProvider>

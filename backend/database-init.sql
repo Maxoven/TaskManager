@@ -280,3 +280,17 @@ BEGIN
         ALTER TABLE task_assignees ADD CONSTRAINT task_assignees_hours_check CHECK (hours IS NULL OR (hours >= 0 AND hours <= 10000));
     END IF;
 END $$;
+
+-- «Входящие»: личный список быстро записанных задач (как Inbox в Todoist).
+-- Видит только автор. Разбирая входящие, запись переносят в проект — она становится обычной задачей.
+CREATE TABLE IF NOT EXISTS inbox_items (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    due_date DATE,
+    source VARCHAR(10) NOT NULL DEFAULT 'text' CHECK (source IN ('text', 'voice')),
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_inbox_items_user ON inbox_items(user_id, completed_at);

@@ -96,6 +96,16 @@ export const getTeamInvitations = () => api.get('/teams/invitations');
 export const respondToTeamInvitation = (teamId, action) => api.patch(`/teams/invitations/${teamId}/${action}`);
 
 // Профиль
+// Входящие (личный список задач, записанных на ходу)
+export const getInbox = (withCompleted = false) => api.get('/inbox', { params: withCompleted ? { completed: 1 } : {} });
+export const getInboxCount = () => api.get('/inbox/count');
+export const captureTasks = (items, source = 'text') => api.post('/inbox/capture', { items, source });
+export const updateInboxItem = (id, data) => api.patch(`/inbox/${id}`, data);
+export const deleteInboxItem = (id) => api.delete(`/inbox/${id}`);
+export const moveInboxItems = (data) => api.post('/inbox/move', data);
+export const parseVoiceTasks = (transcript, defaultProjectId) =>
+  api.post('/inbox/voice/parse', { transcript, defaultProjectId }, { timeout: 60000 });
+
 export const getMe = () => api.get('/auth/me');
 export const uploadAvatar = (blob) => {
   const formData = new FormData();

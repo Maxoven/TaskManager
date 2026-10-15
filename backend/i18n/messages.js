@@ -135,6 +135,15 @@ const messages = {
     fileDeleted: 'Файл удалён',
     fileDeleteError: 'Ошибка удаления файла',
 
+    // Входящие
+    inboxFetchError: 'Не удалось загрузить входящие',
+    inboxSaveError: 'Не удалось сохранить запись',
+    inboxMoveError: 'Не удалось перенести в проект',
+    inboxItemNotFound: 'Запись не найдена — возможно, её уже перенесли или удалили',
+    inboxItemDeleted: 'Запись удалена',
+    inboxBatchInvalid: 'Можно добавить или перенести от 1 до 50 задач за раз',
+    voiceTooLong: 'Запись слишком длинная — разбейте её на несколько',
+
     // ИИ-ассистент
     assistantDisabled: 'Ассистент не настроен на сервере',
     assistantEmpty: 'Напишите вопрос',
@@ -276,6 +285,15 @@ const messages = {
     fileDownloadError: 'Error downloading file',
     fileDeleted: 'File deleted',
     fileDeleteError: 'Error deleting file',
+
+    // Inbox
+    inboxFetchError: 'Could not load the inbox',
+    inboxSaveError: 'Could not save the item',
+    inboxMoveError: 'Could not move to the project',
+    inboxItemNotFound: 'Item not found — it may have been moved or deleted already',
+    inboxItemDeleted: 'Item deleted',
+    inboxBatchInvalid: 'You can add or move 1 to 50 tasks at a time',
+    voiceTooLong: 'The recording is too long — split it into several',
 
     // AI assistant
     assistantDisabled: 'The assistant is not configured on the server',

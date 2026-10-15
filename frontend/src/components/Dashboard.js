@@ -4,6 +4,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useLanguage } from '../context/LanguageContext';
 import { useFeedback } from '../context/FeedbackContext';
 import { useTeams, SHARED, canManageRole } from '../context/TeamContext';
+import { useInbox } from '../context/InboxContext';
 import { ROLE_LABEL_KEYS } from './TeamSwitcher';
 import AppHeader from './AppHeader';
 import Modal from './Modal';
@@ -165,6 +166,13 @@ function Dashboard({ user, onLogout }) {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadData(); }, []);
+
+  // Задачи добавили в проект через быстрый ввод или перенесли из «Входящих» — обновляем карточки
+  const inboxVersion = useInbox()?.change.version;
+  useEffect(() => {
+    if (inboxVersion) loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inboxVersion]);
   // Сменили команду — выходим из режима сортировки, он относится к прежнему списку
   useEffect(() => { setSortMode(false); }, [current]);
 
