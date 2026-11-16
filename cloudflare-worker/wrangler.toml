@@ -1,0 +1,8 @@
+# Cloudflare Worker — прокси для MCP-сервера (см. src/index.js и cloudflare-worker/README.md)
+name = "taskmanager-mcp"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[vars]
+ORIGIN = "https://taskmanager.ecoestate.tv"

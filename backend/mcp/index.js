@@ -42,6 +42,8 @@ async function handleMcpPost(req, res) {
 
 function mountMcp(app) {
   app.use(wellKnownRouter());
+  // Те же метаданные под /api — для прокси (Cloudflare Worker), когда nginx не пускает /.well-known/ к API
+  app.use('/api/mcp/discovery', wellKnownRouter());
   app.use('/api/mcp/oauth', oauthRouter());
 
   const auth = requireBearerAuth({
