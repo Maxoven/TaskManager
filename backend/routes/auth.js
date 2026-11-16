@@ -261,6 +261,11 @@ router.post('/reset-password', authLimiter, async (req, res) => {
         'UPDATE password_reset_tokens SET used = TRUE WHERE user_id = $1 AND used = FALSE',
         [resetToken.user_id]
       );
+      // Новый пароль отключает подключённые ИИ-клиенты (MCP): их refresh-токены больше не обновятся
+      await client.query(
+        'UPDATE mcp_oauth_refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL',
+        [resetToken.user_id]
+      );
     });
     res.json({ message: req.t('passwordChanged') });
   } catch (error) {

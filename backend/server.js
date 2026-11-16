@@ -14,6 +14,7 @@ const assistantRoutes = require('./routes/assistant');
 const avatarRoutes = require('./routes/avatars');
 const inboxRoutes = require('./routes/inbox');
 const { startScheduler } = require('./services/scheduler');
+const { mountMcp } = require('./mcp');
 
 // Без секрета jwt.sign/verify падают на каждом запросе — лучше не стартовать вовсе
 if (!process.env.JWT_SECRET) {
@@ -42,6 +43,8 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/inbox', inboxRoutes);
 app.use('/api/teams', teamRoutes);
 app.use('/api/assistant', assistantRoutes);
+// MCP-сервер для ИИ-клиентов (Claude и др.) и его OAuth-вход: /api/mcp, /api/mcp/oauth/*, /.well-known/oauth-*
+mountMcp(app);
 
 app.get('/api', (req, res) => {
   res.json({ message: req.t('apiRunning') });

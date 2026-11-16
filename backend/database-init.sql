@@ -294,3 +294,34 @@ CREATE TABLE IF NOT EXISTS inbox_items (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_inbox_items_user ON inbox_items(user_id, completed_at);
+
+-- MCP-сервер (/api/mcp): вход ИИ-клиентов (Claude и др.) по OAuth 2.1 через логин и пароль аккаунта.
+-- Клиенты регистрируются сами (Dynamic Client Registration). Коды и refresh-токены храним
+-- только в виде SHA-256 — утечка таблицы не даёт войти. Access-токены — короткие JWT (1 час).
+CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
+    client_id VARCHAR(64) PRIMARY KEY,
+    info JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS mcp_oauth_codes (
+    code_hash CHAR(64) PRIMARY KEY,
+    client_id VARCHAR(64) NOT NULL REFERENCES mcp_oauth_clients(client_id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    redirect_uri TEXT NOT NULL,
+    code_challenge VARCHAR(128) NOT NULL,
+    scopes TEXT NOT NULL DEFAULT '',
+    expires_at TIMESTAMPTZ NOT NULL,
+    used BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE TABLE IF NOT EXISTS mcp_oauth_refresh_tokens (
+    token_hash CHAR(64) PRIMARY KEY,
+    client_id VARCHAR(64) NOT NULL REFERENCES mcp_oauth_clients(client_id) ON DELETE CASCADE,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    scopes TEXT NOT NULL DEFAULT '',
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_mcp_refresh_user ON mcp_oauth_refresh_tokens(user_id);

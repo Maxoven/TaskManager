@@ -9,6 +9,10 @@ const authMiddleware = (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Тем же секретом подписаны служебные токены MCP (OAuth, typ/aud) — к REST API они не подходят
+    if (!Number.isInteger(decoded.userId) || decoded.typ !== undefined || decoded.aud !== undefined) {
+      return res.status(401).json({ error: req.t('invalidToken') });
+    }
     req.userId = decoded.userId;
     next();
   } catch (error) {

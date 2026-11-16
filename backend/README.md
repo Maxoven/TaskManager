@@ -30,6 +30,7 @@ npm start
 | `UPLOADS_DIR` | Папка файлов задач, по умолчанию `backend/storage/uploads` |
 | `AVATARS_DIR` | Папка фото профиля, по умолчанию `backend/storage/avatars` |
 | `DEEPSEEK_API_KEY` | Ключ DeepSeek для ИИ-ассистента. Без него ассистент не показывается |
+| `MCP_PUBLIC_URL` | Необязательно: публичный адрес сайта для MCP и OAuth. По умолчанию `FRONTEND_URL` |
 | `DEEPSEEK_MODEL` | Необязательно: конкретная модель. По умолчанию выбирается быстрая «flash» из доступных ключу |
 
 ## Структура
@@ -40,6 +41,7 @@ backend/
 ├── config/database.js    # пул PostgreSQL, withTransaction
 ├── middleware/           # auth (JWT), lang (язык ответа), rateLimit
 ├── routes/               # auth, avatars, projects, tasks, reports (magic link), teams, inbox (входящие, голос), assistant (ИИ)
+├── mcp/                  # MCP-сервер для ИИ-клиентов: index (/api/mcp), oauth (вход), tools (инструменты)
 ├── services/             # access (права), email, scheduler (напоминания), ai (DeepSeek), fileReader (чтение файлов для ИИ)
 ├── i18n/messages.js      # тексты ответов API (ru/en)
 ├── scripts/              # init-db, migrate-from-mysql
@@ -68,6 +70,30 @@ backend/
 Как Inbox, Quick Add и Ramble в Todoist. «Входящие» (`inbox_items`) — личный список задач пользователя, записанных на ходу; другим не виден. Из любого места: `Q` — быстро добавить (строка вида «Позвонить завтра #Офис» сама распознаёт срок и проект), `Shift+Q` — надиктовать. Разбирая входящие, запись переносят в проект (`POST /api/inbox/move`) — она становится обычной задачей в выбранной колонке с исполнителями.
 
 Речь в текст переводит браузер (Web Speech API: Chrome, Edge, Safari; в Firefox — ввод текстом), а текст на задачи разбирает DeepSeek (`POST /api/inbox/voice/parse`), поэтому голосовой ввод работает только при заданном `DEEPSEEK_API_KEY`. Звук на сервер не передаётся и не хранится.
+
+## MCP-сервер для ИИ
+
+По адресу `https://<сайт>/api/mcp` работает MCP-сервер (Model Context Protocol, Streamable HTTP). Через него ИИ-клиент — Claude (claude.ai, Claude Desktop, Claude Code), Claude Managed Agents или любой другой клиент MCP — управляет Task Manager от имени пользователя: команды, проекты, доступ, задачи, исполнители, сроки, «Входящие», загрузка.
+
+**Вход — логин и пароль аккаунта**, по OAuth 2.1: клиент сам регистрируется, открывает страницу входа `/api/mcp/oauth/authorize`, человек вводит email и пароль, клиент получает токены. Пароль ИИ не видит. Access-токен живёт час, refresh-токен — 60 дней и меняется при каждом обновлении. Коды и refresh-токены хранятся только как SHA-256 (`mcp_oauth_*`). Токены MCP не подходят к обычному API, и наоборот.
+
+**Права — ровно как у пользователя.** Каждый инструмент вызывает тот же REST API, что и сайт, от его имени, поэтому действуют все проверки из `services/access.js`. Удаление помечено для клиента как необратимое (`destructiveHint`).
+
+Подключить в Claude: Настройки → Коннекторы → «Добавить свой коннектор» → адрес `https://taskmanager.ecoestate.tv/api/mcp` → «Подключить» → войти. В Claude Code: `claude mcp add --transport http taskmanager https://taskmanager.ecoestate.tv/api/mcp`, затем `/mcp` → войти.
+
+**Nginx:** клиенты ищут метаданные OAuth в корне сайта, поэтому кроме `/api` на API нужно проксировать `/.well-known/oauth-`:
+
+```nginx
+location /.well-known/oauth- {
+    proxy_pass http://127.0.0.1:3001;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+```
+
+Проверка: `curl https://<сайт>/.well-known/oauth-authorization-server` возвращает JSON, а `curl -i -X POST https://<сайт>/api/mcp` — `401` с заголовком `WWW-Authenticate`.
+
+Отозвать доступ: сменить пароль через «Забыли пароль?» — это гасит все refresh-токены пользователя (или вручную: `UPDATE mcp_oauth_refresh_tokens SET revoked_at = NOW() WHERE user_id = …`). Уже выданный access-токен перестаёт работать не позже чем через час.
 
 ## Развёртывание
 
