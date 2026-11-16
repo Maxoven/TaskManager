@@ -65,7 +65,7 @@ async function taskAttachments(auth, list) {
 
 // [имя, описание, схема, аннотации, (args, account, auth) => результат MCP]
 const TOOLS = [
-  ['mail_status', 'Подключённый почтовый ящик: адрес и сервер. Почта подключается при входе, если пароль от неё совпадает с паролем таскменеджера.', {}, READ,
+  ['mail_status', 'Подключённый почтовый ящик: адрес и сервер. Почта подключается при входе в коннектор.', {}, READ,
     async (a, account) => json({ email: account.email, imap: account.imap.host, smtp: account.smtp.host, last_error: account.lastError })],
 
   ['mail_list_folders', 'Папки ящика: путь (path — его передавать в другие инструменты), назначение (\\Sent, \\Trash, \\Drafts, \\Junk), всего писем и непрочитанных.', {}, READ,
@@ -168,7 +168,7 @@ function registerMailTools(server) {
       try {
         const account = await mailAccounts.getAccount(extra.authInfo.extra.userId);
         if (!account) {
-          return { isError: true, content: [{ type: 'text', text: 'Почта не подключена. Она подключается при входе в коннектор, если пароль от корпоративной почты совпадает с паролем таскменеджера.' }] };
+          return { isError: true, content: [{ type: 'text', text: 'Почта не подключена. Она подключается при входе в коннектор: если пароль от корпоративной почты не такой, как от таскменеджера, его нужно ввести в поле «Пароль от корпоративной почты» на странице входа (отключите и подключите коннектор заново).' }] };
         }
         return await run(args || {}, account, extra.authInfo);
       } catch (error) {

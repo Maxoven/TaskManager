@@ -103,16 +103,17 @@ function imapClient(account) {
   });
 }
 
-// 'ok' | 'auth_failed' | 'unavailable'
+// { status: 'ok' | 'auth_failed' | 'unavailable', detail } — detail: ответ почтового сервера (без пароля)
 async function checkLogin(account) {
   const client = imapClient(account);
   client.on('error', () => {});
   try {
     await client.connect();
     await client.logout();
-    return 'ok';
+    return { status: 'ok' };
   } catch (error) {
-    return error.authenticationFailed ? 'auth_failed' : 'unavailable';
+    const detail = String(error.responseText || error.serverResponseCode || error.code || error.message || '').slice(0, 200);
+    return { status: error.authenticationFailed ? 'auth_failed' : 'unavailable', detail };
   }
 }
 
@@ -134,17 +135,17 @@ async function deleteAccount(userId) {
   await pool.query('DELETE FROM mail_accounts WHERE user_id = $1', [userId]);
 }
 
-// Вызывается после успешного входа на странице MCP: тот же пароль пробуем на почтовом сервере.
-// Ошибки почты вход в таскменеджер не ломают.
+// Вызывается после успешного входа на странице MCP. Пароль от почты — отдельный, если человек его ввёл,
+// иначе тот же, что от таскменеджера. Ошибки почты вход в таскменеджер не ломают.
 async function linkOnLogin(userId, email, password) {
-  if (!isEnabled()) return 'disabled';
+  if (!isEnabled()) return { status: 'disabled' };
   const servers = await serversFor(email);
-  if (!servers) return 'not_supported';
+  if (!servers) return { status: 'not_supported' };
   const account = { email, password, ...servers };
   const result = await checkLogin(account);
-  if (result === 'ok') await saveAccount(userId, account);
+  if (result.status === 'ok') await saveAccount(userId, account);
   // Пароль от почты другой — старое подключение (если было) больше не годится
-  else if (result === 'auth_failed') await deleteAccount(userId);
+  else if (result.status === 'auth_failed') await deleteAccount(userId);
   return result;
 }
 

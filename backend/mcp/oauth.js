@@ -186,7 +186,9 @@ const TEXTS = {
     title: 'Вход в Task Manager',
     lead: (app) => `<b>${app}</b> просит доступ к вашему аккаунту Task Manager. Он сможет от вашего имени смотреть, создавать, менять и удалять команды, проекты и задачи — всё, что можете вы.`,
     email: 'Email', password: 'Пароль', submit: 'Войти и разрешить доступ',
-    note: 'Пароль останется здесь — приложение получит только токен доступа. Если ваша корпоративная почта на one.com и пароль от неё такой же, приложение получит доступ и к почте: сможет читать, искать, отправлять и удалять письма. Отозвать доступ можно, сменив пароль через «Забыли пароль?».',
+    mailPassword: 'Пароль от корпоративной почты — если отличается',
+    mailHint: 'Необязательно. Нужен, только если пароль от почты one.com не такой, как от Task Manager. Оставьте пустым, если пароли совпадают или почта не нужна.',
+    note: 'Пароль останется здесь — приложение получит только токен доступа. Если ваша корпоративная почта на one.com, приложение получит доступ и к ней (с тем же паролем или с паролем от почты, если вы его ввели): сможет читать, искать, отправлять и удалять письма. Отозвать доступ можно, сменив пароль через «Забыли пароль?».',
     invalid: 'Неверный email или пароль',
     unverified: 'Email не подтверждён — откройте ссылку из письма после регистрации',
     expired: 'Страница входа устарела. Вернитесь в приложение и начните подключение заново.',
@@ -197,7 +199,9 @@ const TEXTS = {
     title: 'Sign in to Task Manager',
     lead: (app) => `<b>${app}</b> is asking for access to your Task Manager account. On your behalf it will be able to view, create, change and delete teams, projects and tasks — everything you can do.`,
     email: 'Email', password: 'Password', submit: 'Sign in and allow access',
-    note: 'Your password stays here — the app only gets an access token. If your company mailbox is hosted at one.com with the same password, the app also gets access to your mail: it can read, search, send and delete messages. Resetting your password ("Forgot password?") revokes access.',
+    mailPassword: 'Company mail password — if different',
+    mailHint: 'Optional. Only needed if your one.com mailbox password differs from your Task Manager password. Leave empty if they match or you do not need mail.',
+    note: 'Your password stays here — the app only gets an access token. If your company mailbox is hosted at one.com, the app also gets access to it (with the same password, or with the mail password if you entered one): it can read, search, send and delete messages. Resetting your password ("Forgot password?") revokes access.',
     invalid: 'Wrong email or password',
     unverified: 'Email is not verified — open the link from the sign-up email',
     expired: 'This sign-in page has expired. Go back to the app and connect again.',
@@ -252,6 +256,7 @@ function sendLoginPage(res, lang, { clientName, pending, error, email, redirectU
     border: 0; border-radius: 8px; cursor: pointer; }
   .error { background: #fdecec; color: #a40e26; padding: 10px 12px; border-radius: 8px; margin: 0 0 14px; }
   small { display: block; margin-top: 14px; color: #6e7781; }
+  small.hint { margin: -8px 0 16px; font-size: 13px; }
   @media (prefers-color-scheme: dark) {
     body { background: #0d1117; color: #e6edf3; } main { background: #161b22; box-shadow: none; }
     p, small { color: #9198a1; } input { border-color: #30363d; } .error { background: #3d1418; color: #ffa198; }
@@ -266,6 +271,9 @@ ${pending ? `<form method="post" action="${escapeHtml(urls().oauth)}/login">
   <input id="email" name="email" type="email" autocomplete="username" required value="${escapeHtml(email)}" ${email ? '' : 'autofocus'}>
   <label for="password">${t.password}</label>
   <input id="password" name="password" type="password" autocomplete="current-password" required ${email ? 'autofocus' : ''}>
+  <label for="mail_password">${t.mailPassword}</label>
+  <input id="mail_password" name="mail_password" type="password" autocomplete="off" aria-describedby="mail_hint">
+  <small id="mail_hint" class="hint">${t.mailHint}</small>
   <button type="submit">${t.submit}</button>
 </form>
 <small>${t.note}</small>` : ''}
@@ -299,10 +307,14 @@ async function handleLogin(req, res) {
   if (!user || !password || !(await bcrypt.compare(password, user.password_hash))) return retry('invalid', 401);
   if (!user.is_verified) return retry('unverified', 403);
 
-  // Тот же пароль — к корпоративной почте (если она на one.com). Ошибки почты вход не ломают
+  // Корпоративная почта (если она на one.com): отдельный пароль, если введён, иначе тот же.
+  // Ошибки почты вход не ломают
+  const mailPassword = typeof req.body.mail_password === 'string' && req.body.mail_password ? req.body.mail_password : password;
   try {
-    const mail = await mailAccounts.linkOnLogin(user.id, user.email.toLowerCase(), password);
-    if (mail !== 'disabled' && mail !== 'not_supported') console.log(`[MCP] Почта для пользователя ${user.id}: ${mail}`);
+    const mail = await mailAccounts.linkOnLogin(user.id, user.email.toLowerCase(), mailPassword);
+    if (mail.status !== 'disabled' && mail.status !== 'not_supported') {
+      console.log(`[MCP] Почта для пользователя ${user.id}: ${mail.status}${mail.detail ? ` (${mail.detail})` : ''}${mailPassword !== password ? ' [отдельный пароль]' : ''}`);
+    }
   } catch (error) {
     console.error('[MCP] Не удалось подключить почту:', error.message);
   }
