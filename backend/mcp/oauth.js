@@ -100,7 +100,7 @@ const provider = {
       st: params.state,
       sc: params.scopes || []
     }, process.env.JWT_SECRET, { expiresIn: PENDING_TTL, audience: 'mcp-authorize' });
-    sendLoginPage(res, res.req?.lang, { clientName: client.client_name, pending });
+    sendLoginPage(res, res.req?.lang, { clientName: client.client_name, pending, redirectUri: params.redirectUri });
   },
 
   async challengeForAuthorizationCode(client, code) {
@@ -209,7 +209,18 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ));
 
-function sendLoginPage(res, lang, { clientName, pending, error, email, status = 200 }) {
+// Origin адреса возврата ИИ-клиента для CSP: браузер проверяет form-action и для перенаправления
+// после отправки формы, а вход заканчивается редиректом на сайт клиента (например, claude.ai)
+function redirectOrigin(uri) {
+  try {
+    const { origin } = new URL(uri);
+    return /^https?:\/\/[^\s;,']+$/.test(origin) ? origin : null;
+  } catch {
+    return null;
+  }
+}
+
+function sendLoginPage(res, lang, { clientName, pending, error, email, redirectUri, status = 200 }) {
   const t = TEXTS[lang] || TEXTS.ru;
   const app = escapeHtml(clientName ? String(clientName).slice(0, 100) : t.unknownApp);
   res.status(status);
@@ -217,7 +228,7 @@ function sendLoginPage(res, lang, { clientName, pending, error, email, status = 
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
     // Страницу нельзя встроить в чужой сайт (кликджекинг) и подгружать на неё сторонние скрипты
-    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'",
+    'Content-Security-Policy': `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'${redirectOrigin(redirectUri) ? ` ${redirectOrigin(redirectUri)}` : ''}; frame-ancestors 'none'`,
     'X-Frame-Options': 'DENY',
     'Referrer-Policy': 'no-referrer'
   });
@@ -279,7 +290,7 @@ async function handleLogin(req, res) {
   const email = typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : '';
   const password = typeof req.body.password === 'string' ? req.body.password : '';
   const retry = (error, status) => sendLoginPage(res, lang, {
-    clientName: client.client_name, pending: req.body.pending, error, email, status
+    clientName: client.client_name, pending: req.body.pending, error, email, redirectUri: pending.ru, status
   });
 
   const { rows } = await pool.query('SELECT id, password_hash, is_verified FROM users WHERE LOWER(email) = $1', [email]);
