@@ -41,6 +41,13 @@ if [ -f deepseek.txt ] && ! ssh "$HOST" "grep -q '^DEEPSEEK_API_KEY=.' $REMOTE/b
   tr -d ' \n\r' < deepseek.txt | ssh "$HOST" "printf '\nDEEPSEEK_API_KEY=%s\n' \"\$(cat)\" >> $REMOTE/backend/.env"
 fi
 
+# Ключ шифрования паролей почты для MCP: создаётся один раз прямо на сервере и никуда не копируется.
+# Если его потерять или сменить, почту придётся переподключить (заново войти в коннектор).
+if ! ssh "$HOST" "grep -q '^MAIL_ENCRYPTION_KEY=.' $REMOTE/backend/.env"; then
+  echo "    Создаю MAIL_ENCRYPTION_KEY в .env на сервере"
+  ssh "$HOST" "printf '\nMAIL_ENCRYPTION_KEY=%s\n' \"\$(openssl rand -base64 32)\" >> $REMOTE/backend/.env"
+fi
+
 echo "3/6 Установка зависимостей и обновление схемы БД"
 ssh "$HOST" "cd $REMOTE/backend && npm ci --omit=dev && npm run db:init"
 

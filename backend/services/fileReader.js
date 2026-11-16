@@ -92,11 +92,23 @@ async function readPdf(buffer) {
 }
 
 async function readAttachment(filePath, originalName) {
-  const ext = path.extname(originalName || filePath).toLowerCase();
-  const buffer = await fs.readFile(filePath);
+  return readBuffer(await fs.readFile(filePath), originalName || filePath);
+}
+
+// То же для содержимого в памяти (например, вложения из письма)
+async function readBuffer(buffer, originalName, contentType = '') {
+  const ext = path.extname(originalName || '').toLowerCase();
   try {
+    if (!ext && /^image\/(png|jpeg)$/.test(contentType)) {
+      return { kind: 'image', mime: contentType, base64: buffer.toString('base64') };
+    }
+    if ((!ext || ['.csv', '.md', '.html', '.htm', '.ics', '.json', '.xml'].includes(ext)) && /^text\/|json|xml/.test(contentType)) {
+      return limitText(buffer.toString('utf8'));
+    }
     switch (ext) {
-      case '.txt': return limitText(buffer.toString('utf8'));
+      case '.txt':
+      case '.csv':
+      case '.md': return limitText(buffer.toString('utf8'));
       case '.pdf': return await readPdf(buffer);
       case '.docx': return readDocx(buffer);
       case '.xlsx': return readXlsx(buffer);
@@ -113,4 +125,4 @@ async function readAttachment(filePath, originalName) {
   }
 }
 
-module.exports = { readAttachment };
+module.exports = { readAttachment, readBuffer };

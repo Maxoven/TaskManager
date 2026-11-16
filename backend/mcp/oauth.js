@@ -16,6 +16,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
 const rateLimit = require('../middleware/rateLimit');
+const mailAccounts = require('../services/mailAccounts');
 const { authorizationHandler } = require('@modelcontextprotocol/sdk/server/auth/handlers/authorize.js');
 const { tokenHandler } = require('@modelcontextprotocol/sdk/server/auth/handlers/token.js');
 const { clientRegistrationHandler } = require('@modelcontextprotocol/sdk/server/auth/handlers/register.js');
@@ -185,7 +186,7 @@ const TEXTS = {
     title: 'Вход в Task Manager',
     lead: (app) => `<b>${app}</b> просит доступ к вашему аккаунту Task Manager. Он сможет от вашего имени смотреть, создавать, менять и удалять команды, проекты и задачи — всё, что можете вы.`,
     email: 'Email', password: 'Пароль', submit: 'Войти и разрешить доступ',
-    note: 'Пароль останется здесь — приложение получит только токен доступа. Отозвать доступ можно, сменив пароль через «Забыли пароль?».',
+    note: 'Пароль останется здесь — приложение получит только токен доступа. Если ваша корпоративная почта на one.com и пароль от неё такой же, приложение получит доступ и к почте: сможет читать, искать, отправлять и удалять письма. Отозвать доступ можно, сменив пароль через «Забыли пароль?».',
     invalid: 'Неверный email или пароль',
     unverified: 'Email не подтверждён — откройте ссылку из письма после регистрации',
     expired: 'Страница входа устарела. Вернитесь в приложение и начните подключение заново.',
@@ -196,7 +197,7 @@ const TEXTS = {
     title: 'Sign in to Task Manager',
     lead: (app) => `<b>${app}</b> is asking for access to your Task Manager account. On your behalf it will be able to view, create, change and delete teams, projects and tasks — everything you can do.`,
     email: 'Email', password: 'Password', submit: 'Sign in and allow access',
-    note: 'Your password stays here — the app only gets an access token. Resetting your password ("Forgot password?") revokes access.',
+    note: 'Your password stays here — the app only gets an access token. If your company mailbox is hosted at one.com with the same password, the app also gets access to your mail: it can read, search, send and delete messages. Resetting your password ("Forgot password?") revokes access.',
     invalid: 'Wrong email or password',
     unverified: 'Email is not verified — open the link from the sign-up email',
     expired: 'This sign-in page has expired. Go back to the app and connect again.',
@@ -293,10 +294,18 @@ async function handleLogin(req, res) {
     clientName: client.client_name, pending: req.body.pending, error, email, redirectUri: pending.ru, status
   });
 
-  const { rows } = await pool.query('SELECT id, password_hash, is_verified FROM users WHERE LOWER(email) = $1', [email]);
+  const { rows } = await pool.query('SELECT id, email, password_hash, is_verified FROM users WHERE LOWER(email) = $1', [email]);
   const user = rows[0];
   if (!user || !password || !(await bcrypt.compare(password, user.password_hash))) return retry('invalid', 401);
   if (!user.is_verified) return retry('unverified', 403);
+
+  // Тот же пароль — к корпоративной почте (если она на one.com). Ошибки почты вход не ломают
+  try {
+    const mail = await mailAccounts.linkOnLogin(user.id, user.email.toLowerCase(), password);
+    if (mail !== 'disabled' && mail !== 'not_supported') console.log(`[MCP] Почта для пользователя ${user.id}: ${mail}`);
+  } catch (error) {
+    console.error('[MCP] Не удалось подключить почту:', error.message);
+  }
 
   const code = randomToken();
   await pool.query(

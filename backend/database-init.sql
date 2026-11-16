@@ -325,3 +325,20 @@ CREATE TABLE IF NOT EXISTS mcp_oauth_refresh_tokens (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_mcp_refresh_user ON mcp_oauth_refresh_tokens(user_id);
+
+-- Почта для MCP: подключение ящика (one.com) пользователя. Пароль зашифрован AES-256-GCM ключом
+-- MAIL_ENCRYPTION_KEY из .env (в базе его нет). См. services/mailAccounts.js.
+CREATE TABLE IF NOT EXISTS mail_accounts (
+    user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    email VARCHAR(255) NOT NULL,
+    password_enc TEXT NOT NULL,
+    imap_host VARCHAR(255) NOT NULL,
+    imap_port INT NOT NULL,
+    imap_secure BOOLEAN NOT NULL DEFAULT TRUE,
+    smtp_host VARCHAR(255) NOT NULL,
+    smtp_port INT NOT NULL,
+    smtp_secure BOOLEAN NOT NULL DEFAULT TRUE,
+    connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_error TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

@@ -266,6 +266,8 @@ router.post('/reset-password', authLimiter, async (req, res) => {
         'UPDATE mcp_oauth_refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL',
         [resetToken.user_id]
       );
+      // И сохранённый для MCP пароль от почты: при следующем входе подключится заново
+      await client.query('DELETE FROM mail_accounts WHERE user_id = $1', [resetToken.user_id]);
     });
     res.json({ message: req.t('passwordChanged') });
   } catch (error) {
