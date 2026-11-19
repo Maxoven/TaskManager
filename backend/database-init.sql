@@ -343,8 +343,9 @@ CREATE TABLE IF NOT EXISTS mail_accounts (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Ожидаемая дата завершения проекта (необязательная)
+-- Даты проекта (необязательные): начало и ожидаемое завершение
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS due_date DATE;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS start_date DATE;
 
 -- Файлы, прикреплённые к самому проекту (а не к задаче): договоры, ТЗ, сметы и т. п.
 CREATE TABLE IF NOT EXISTS project_attachments (

@@ -34,7 +34,7 @@ function UndatedTasks({ tasks, onTaskClick }) {
   );
 }
 
-function GanttChart({ tasks, onTaskClick, onAddTask, members, projectDue }) {
+function GanttChart({ tasks, onTaskClick, onAddTask, members, projectDue, projectStart }) {
   const { t, lang } = useLanguage();
   const dateLocale = lang === 'ru' ? ru : undefined;
   const today = startOfDay(new Date());
@@ -58,13 +58,17 @@ function GanttChart({ tasks, onTaskClick, onAddTask, members, projectDue }) {
       if (taskStart < start) start = taskStart;
       if (taskEnd > end) end = taskEnd;
     });
-    // Срок проекта тоже должен попасть на шкалу
+    // Даты проекта тоже должны попасть на шкалу
     if (projectDue) {
       const dueEnd = addDays(startOfDay(parseDate(projectDue)), 14);
       if (dueEnd > end) end = dueEnd;
     }
+    if (projectStart) {
+      const projectBegin = subDays(startOfDay(parseDate(projectStart)), 14);
+      if (projectBegin < start) start = projectBegin;
+    }
     return { viewStart: start, periodDays: differenceInDays(end, start) + 1 };
-  }, [tasks, todayTime, projectDue]);
+  }, [tasks, todayTime, projectDue, projectStart]);
 
   const viewEnd = addDays(viewStart, periodDays - 1);
   const totalWidth = periodDays * DAY_PX;
@@ -208,6 +212,12 @@ function GanttChart({ tasks, onTaskClick, onAddTask, members, projectDue }) {
               <span>{t(key)}</span>
             </div>
           ))}
+          {projectStart && (
+            <div className="legend-item">
+              <span className="legend-project-start" aria-hidden="true" />
+              <span>{t('ganttProjectStart', { date: formatDate(projectStart, lang) })}</span>
+            </div>
+          )}
           {projectDue && (
             <div className="legend-item">
               <span className="legend-project-due" aria-hidden="true" />
@@ -289,6 +299,14 @@ function GanttChart({ tasks, onTaskClick, onAddTask, members, projectDue }) {
               {todayPx >= 0 && todayPx <= totalWidth && (
                 <div className="gantt-today-line" style={{ left: todayPx }} />
               )}
+
+              {/* Начало проекта — по левому краю этого дня */}
+              {projectStart && (() => {
+                const startPx = dateToPx(projectStart);
+                return startPx >= 0 && startPx <= totalWidth
+                  ? <div className="gantt-project-start-line" style={{ left: startPx }} title={t('ganttProjectStart', { date: formatDate(projectStart, lang) })} />
+                  : null;
+              })()}
 
               {/* Ожидаемая дата завершения проекта — по правому краю этого дня */}
               {projectDue && (() => {

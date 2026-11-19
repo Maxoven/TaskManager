@@ -37,7 +37,8 @@ const messages = {
     // Projects
     projectsFetchError: 'Ошибка получения проектов',
     projectNameRequired: 'Укажите название проекта',
-    projectDueInvalid: 'Укажите дату завершения в формате ГГГГ-ММ-ДД',
+    projectDueInvalid: 'Укажите дату в формате ГГГГ-ММ-ДД',
+    projectDatesOrder: 'Дата завершения проекта не может быть раньше даты начала',
     projectFileDeleteDenied: 'Удалить файл может тот, кто его загрузил, или тот, кто ведёт проект',
     projectCreateError: 'Ошибка создания проекта',
     onlyOwnerEdit: 'Только владелец может редактировать проект',
@@ -190,7 +191,8 @@ const messages = {
     // Projects
     projectsFetchError: 'Error loading projects',
     projectNameRequired: 'Enter a project name',
-    projectDueInvalid: 'Enter the end date as YYYY-MM-DD',
+    projectDueInvalid: 'Enter the date as YYYY-MM-DD',
+    projectDatesOrder: 'The project end date cannot be earlier than the start date',
     projectFileDeleteDenied: 'A file can be deleted by the person who uploaded it or by someone who manages the project',
     projectCreateError: 'Error creating project',
     onlyOwnerEdit: 'Only the owner can edit the project',

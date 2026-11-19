@@ -20,7 +20,7 @@ router.param('userId', requireNumericParam);
 router.param('fileId', requireNumericParam);
 
 const cleanText = (value) => (typeof value === 'string' ? value.trim() : '');
-// Ожидаемая дата завершения: 'YYYY-MM-DD', пусто/null — без срока, undefined — не менять
+// Дата проекта (начало / ожидаемое завершение): 'YYYY-MM-DD', пусто/null — без даты, undefined — не менять
 const parseDueDate = (value) => {
   if (value === undefined) return { skip: true };
   if (value === null || value === '') return { value: null };
@@ -139,14 +139,16 @@ router.post('/', async (req, res) => {
     const memberIds = toIds(req.body.memberIds);
     const statusNames = req.t('defaultStatuses');
     const due = parseDueDate(req.body.dueDate);
-    if (due.invalid) return res.status(400).json({ error: req.t('projectDueInvalid') });
+    const start = parseDueDate(req.body.startDate);
+    if (due.invalid || start.invalid) return res.status(400).json({ error: req.t('projectDueInvalid') });
+    if (start.value && due.value && due.value < start.value) return res.status(400).json({ error: req.t('projectDatesOrder') });
 
     const project = await withTransaction(async (client) => {
       const { rows: [created] } = await client.query(`
-        INSERT INTO projects (name, description, owner_id, team_id, due_date, sort_order)
-        VALUES ($1, $2, $3, $4, $5, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM projects WHERE team_id = $4))
+        INSERT INTO projects (name, description, owner_id, team_id, due_date, start_date, sort_order)
+        VALUES ($1, $2, $3, $4, $5, $6, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM projects WHERE team_id = $4))
         RETURNING *
-      `, [name, description, req.userId, teamId, due.value ?? null]);
+      `, [name, description, req.userId, teamId, due.value ?? null, start.value ?? null]);
 
       await client.query(`
         INSERT INTO statuses (project_id, name, position)
@@ -174,15 +176,25 @@ router.patch('/:id', async (req, res) => {
       return res.status(400).json({ error: req.t('projectNameRequired') });
     }
     const due = parseDueDate(req.body.dueDate);
-    if (due.invalid) return res.status(400).json({ error: req.t('projectDueInvalid') });
+    const start = parseDueDate(req.body.startDate);
+    if (due.invalid || start.invalid) return res.status(400).json({ error: req.t('projectDueInvalid') });
 
     if (!isManager(await getProjectRole(pool, id, req.userId))) {
       return res.status(403).json({ error: req.t('onlyAdminsEdit') });
     }
+    // Порядок дат проверяем с учётом той, что не меняется
+    const { rows: [current] } = await pool.query('SELECT start_date, due_date FROM projects WHERE id = $1', [id]);
+    const nextStart = start.skip ? current?.start_date : start.value;
+    const nextDue = due.skip ? current?.due_date : due.value;
+    if (nextStart && nextDue && String(nextDue) < String(nextStart)) {
+      return res.status(400).json({ error: req.t('projectDatesOrder') });
+    }
     const { rows: updated } = await pool.query(
-      `UPDATE projects SET name = $1, description = $2, due_date = CASE WHEN $4 THEN due_date ELSE $5::date END
+      `UPDATE projects SET name = $1, description = $2,
+         due_date = CASE WHEN $4 THEN due_date ELSE $5::date END,
+         start_date = CASE WHEN $6 THEN start_date ELSE $7::date END
        WHERE id = $3 RETURNING *`,
-      [name, description, id, !!due.skip, due.value ?? null]
+      [name, description, id, !!due.skip, due.value ?? null, !!start.skip, start.value ?? null]
     );
     res.json(updated[0]);
   } catch (error) {

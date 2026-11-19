@@ -193,6 +193,13 @@ const translations = {
 
     // Срок и файлы проекта, пустые проекты
     projectDueLabel: 'Ожидаемая дата завершения',
+    projectStartLabel: 'Дата начала',
+    projectDatesHint: 'Обе даты необязательны. Видны на карточке проекта, на доске и на графике.',
+    projectStartChip: 'Начало проекта: {date}',
+    projectStartTitle: 'Дата начала проекта',
+    projectPeriodChip: 'Сроки: {start} — {end}',
+    ganttProjectStart: 'Начало проекта — {date}',
+    projectDatesOrder: 'Дата завершения не может быть раньше даты начала',
     projectDueHint: 'Необязательно. Видна на карточке проекта, на доске и на графике.',
     projectDueChip: 'Срок проекта: {date}',
     projectDueTitle: 'Ожидаемая дата завершения проекта',
@@ -540,7 +547,7 @@ const translations = {
     taskSaveError: "Не удалось сохранить задачу. Попробуйте ещё раз.",
     taskDeleteError: "Не удалось удалить задачу. Попробуйте ещё раз.",
     taskMoveError: "Не удалось переместить задачу — она вернулась на прежнее место.",
-    editProjectBtnTitle: "Изменить название и описание проекта",
+    editProjectBtnTitle: 'Изменить проект: название, описание, даты',
     addTaskInColumn: 'Добавить задачу',
     filesCount: 'Файлов:',
     ganttTaskColumn: 'Задача',
@@ -885,6 +892,13 @@ const translations = {
 
     // Project due date, files, empty projects
     projectDueLabel: 'Expected end date',
+    projectStartLabel: 'Start date',
+    projectDatesHint: 'Both dates are optional. Shown on the project card, the board and the timeline.',
+    projectStartChip: 'Project starts: {date}',
+    projectStartTitle: 'Project start date',
+    projectPeriodChip: 'Dates: {start} — {end}',
+    ganttProjectStart: 'Project start — {date}',
+    projectDatesOrder: 'The end date cannot be earlier than the start date',
     projectDueHint: 'Optional. Shown on the project card, the board and the timeline.',
     projectDueChip: 'Project due: {date}',
     projectDueTitle: 'Expected end date of the project',

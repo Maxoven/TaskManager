@@ -85,7 +85,7 @@ const TOOLS = [
   // ── Проекты ──
   ['list_projects', 'Все проекты, доступные пользователю, во всех его командах.', {}, READ,
     (a, auth) => callApi(auth, 'GET', '/projects')],
-  ['get_project', 'Проект целиком (с ожидаемой датой завершения due_date): колонки (statuses — id нужны для создания и перемещения задач; последняя колонка = «выполнено»), все задачи с исполнителями и сроками, участники и моя роль.', { projectId: id('проекта') }, READ,
+  ['get_project', 'Проект целиком (с датой начала start_date и ожидаемой датой завершения due_date): колонки (statuses — id нужны для создания и перемещения задач; последняя колонка = «выполнено»), все задачи с исполнителями и сроками, участники и моя роль.', { projectId: id('проекта') }, READ,
     (a, auth) => callApi(auth, 'GET', `/projects/${a.projectId}`)],
   ['create_project', 'Создать проект в команде (владелец или админ). Колонки создаются по умолчанию.', {
     teamId: id('команды'),
@@ -93,10 +93,12 @@ const TOOLS = [
     description: z.string().optional(),
     visibility: z.enum(['team', 'selected']).optional().describe('team — видит вся команда; selected (по умолчанию) — только memberIds'),
     memberIds: ids('Кто из команды видит проект при visibility = selected').optional(),
+    startDate: date('Дата начала проекта').optional(),
     dueDate: date('Ожидаемая дата завершения проекта').optional()
   }, WRITE, (a, auth) => callApi(auth, 'POST', '/projects', compact(a))],
-  ['update_project', 'Изменить название, описание и/или ожидаемую дату завершения проекта (владелец или админ). Непереданные поля не меняются.', {
+  ['update_project', 'Изменить название, описание, дату начала и/или ожидаемую дату завершения проекта (владелец или админ). Непереданные поля не меняются.', {
     projectId: id('проекта'), name: z.string().min(1).max(255).optional(), description: z.string().optional().describe('Пустая строка — убрать описание'),
+    startDate: date('Дата начала').nullable().optional().describe('null — убрать дату начала'),
     dueDate: date('Ожидаемая дата завершения').nullable().optional().describe('null — убрать срок')
   }, WRITE, async (a, auth) => {
     // API требует оба поля и стирает описание, если его не передать, — подставляем текущие значения
@@ -104,6 +106,7 @@ const TOOLS = [
     return callApi(auth, 'PATCH', `/projects/${a.projectId}`, {
       name: a.name ?? current.name,
       description: a.description ?? current.description ?? '',
+      ...(a.startDate !== undefined ? { startDate: a.startDate } : {}),
       ...(a.dueDate !== undefined ? { dueDate: a.dueDate } : {})
     });
   }],

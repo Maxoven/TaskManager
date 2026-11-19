@@ -74,6 +74,7 @@ function ProjectFormModal({ project, onSubmit, onClose, teamName, teamId, userId
   const [form, setForm] = useState({
     name: project?.name || '',
     description: project?.description || '',
+    startDate: project?.start_date ? String(project.start_date).slice(0, 10) : '',
     dueDate: project?.due_date ? String(project.due_date).slice(0, 10) : ''
   });
   const [saving, setSaving] = useState(false);
@@ -92,7 +93,12 @@ function ProjectFormModal({ project, onSubmit, onClose, teamName, teamId, userId
     e.preventDefault();
     setError(''); setSaving(true);
     try {
-      const payload = { ...form, dueDate: form.dueDate || null };
+      if (form.startDate && form.dueDate && form.dueDate < form.startDate) {
+        setError(t('projectDatesOrder'));
+        setSaving(false);
+        return;
+      }
+      const payload = { ...form, startDate: form.startDate || null, dueDate: form.dueDate || null };
       await onSubmit(project ? payload : { ...payload, ...accessPayload(access) });
     } catch (err) {
       setError(apiError(err, t, project ? 'projectUpdateError' : 'projectCreateError'));
@@ -116,11 +122,17 @@ function ProjectFormModal({ project, onSubmit, onClose, teamName, teamId, userId
           <label htmlFor="project-description">{t('projectDescLabel')}</label>
           <textarea id="project-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={t('projectDescPlaceholder')} rows="3" />
         </div>
-        <div className="form-group project-due-field">
-          <label htmlFor="project-due">{t('projectDueLabel')}</label>
-          <input id="project-due" type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
-          <p className="field-hint">{t('projectDueHint')}</p>
+        <div className="form-row project-dates">
+          <div className="form-group">
+            <label htmlFor="project-start">{t('projectStartLabel')}</label>
+            <input id="project-start" type="date" value={form.startDate} max={form.dueDate || undefined} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
+          </div>
+          <div className="form-group">
+            <label htmlFor="project-due">{t('projectDueLabel')}</label>
+            <input id="project-due" type="date" value={form.dueDate} min={form.startDate || undefined} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
+          </div>
         </div>
+        <p className="field-hint project-dates-hint">{t('projectDatesHint')}</p>
         {project && <p className="field-hint edit-access-hint"><Icon name="lock" size={13} /> {t('editAccessWhereHint')}</p>}
         {!project && (roster
           ? <ProjectAccessPicker roster={roster} selfId={userId} value={access} onChange={setAccess} />

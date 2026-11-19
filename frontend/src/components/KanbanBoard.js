@@ -39,7 +39,7 @@ function KanbanBoard({ user, onLogout }) {
   const [showFilesModal, setShowFilesModal] = useState(false);
   const [savingProject, setSavingProject] = useState(false);
   const [editError, setEditError] = useState('');
-  const [editForm, setEditForm] = useState({ name: '', description: '', dueDate: '' });
+  const [editForm, setEditForm] = useState({ name: '', description: '', startDate: '', dueDate: '' });
   const [showFullDesc, setShowFullDesc] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -198,7 +198,11 @@ function KanbanBoard({ user, onLogout }) {
     e.preventDefault();
     setEditError(''); setSavingProject(true);
     try {
-      await updateProject(id, { ...editForm, dueDate: editForm.dueDate || null });
+      if (editForm.startDate && editForm.dueDate && editForm.dueDate < editForm.startDate) {
+        setEditError(t('projectDatesOrder'));
+        return;
+      }
+      await updateProject(id, { ...editForm, startDate: editForm.startDate || null, dueDate: editForm.dueDate || null });
       setShowEditModal(false);
       notify.success(t('projectSavedToast'));
       loadProject();
@@ -287,7 +291,7 @@ function KanbanBoard({ user, onLogout }) {
                 <button
                   type="button"
                   className="btn-small btn-edit-project"
-                  onClick={() => { setEditForm({ name: project.name, description: project.description || '', dueDate: project.due_date ? String(project.due_date).slice(0, 10) : '' }); setEditError(''); setShowEditModal(true); }}
+                  onClick={() => { setEditForm({ name: project.name, description: project.description || '', startDate: project.start_date ? String(project.start_date).slice(0, 10) : '', dueDate: project.due_date ? String(project.due_date).slice(0, 10) : '' }); setEditError(''); setShowEditModal(true); }}
                   aria-label={t('editProjectBtnTitle')}
                 ><Icon name="pencil" size={14} />{t('editShort')}</button>
               )}
@@ -481,6 +485,7 @@ function KanbanBoard({ user, onLogout }) {
           onTaskClick={openTask}
           onAddTask={() => openNewTask(statuses[0]?.id)}
           projectDue={project?.due_date}
+          projectStart={project?.start_date}
         />
       )}
 
@@ -510,11 +515,17 @@ function KanbanBoard({ user, onLogout }) {
               <label htmlFor="edit-project-description">{t('projectDescLabel')}</label>
               <textarea id="edit-project-description" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows="3" />
             </div>
-            <div className="form-group project-due-field">
-              <label htmlFor="edit-project-due">{t('projectDueLabel')}</label>
-              <input id="edit-project-due" type="date" value={editForm.dueDate} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} />
-              <p className="field-hint">{t('projectDueHint')}</p>
+            <div className="form-row project-dates">
+              <div className="form-group">
+                <label htmlFor="edit-project-start">{t('projectStartLabel')}</label>
+                <input id="edit-project-start" type="date" value={editForm.startDate} max={editForm.dueDate || undefined} onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label htmlFor="edit-project-due">{t('projectDueLabel')}</label>
+                <input id="edit-project-due" type="date" value={editForm.dueDate} min={editForm.startDate || undefined} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} />
+              </div>
             </div>
+            <p className="field-hint project-dates-hint">{t('projectDatesHint')}</p>
             <p className="field-hint edit-access-hint"><Icon name="lock" size={13} /> {t('editAccessWhereHint')}</p>
             {editError && <div className="error" role="alert">{editError}</div>}
             <div className="modal-actions">
