@@ -1246,7 +1246,7 @@ const translations = {
     taskSaveError: "Could not save the task. Please try again.",
     taskDeleteError: "Could not delete the task. Please try again.",
     taskMoveError: "Could not move the task — it has been put back.",
-    editProjectBtnTitle: "Change the project name and description",
+    editProjectBtnTitle: 'Edit project: name, description, dates',
     addTaskInColumn: 'Add task',
     filesCount: 'Files:',
     ganttTaskColumn: 'Task',
