@@ -61,3 +61,15 @@ export function formatHours(value, lang, digits = 2) {
 }
 
 export const HOURS_PER_DAY = 8;
+
+// Состояние ожидаемой даты завершения проекта: null — срок не задан;
+// 'done' — все задачи в последней колонке; 'overdue' / 'due-soon' (неделя и меньше) / ''
+export function projectDueState(project) {
+  if (!project?.due_date) return null;
+  const total = Number(project.tasks_total) || 0;
+  if (total > 0 && Number(project.tasks_done) === total) return 'done';
+  const days = daysUntil(project.due_date);
+  if (days < 0) return 'overdue';
+  if (days <= 7) return 'due-soon';
+  return '';
+}

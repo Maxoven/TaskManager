@@ -85,25 +85,33 @@ const TOOLS = [
   // ── Проекты ──
   ['list_projects', 'Все проекты, доступные пользователю, во всех его командах.', {}, READ,
     (a, auth) => callApi(auth, 'GET', '/projects')],
-  ['get_project', 'Проект целиком: колонки (statuses — id нужны для создания и перемещения задач; последняя колонка = «выполнено»), все задачи с исполнителями и сроками, участники и моя роль.', { projectId: id('проекта') }, READ,
+  ['get_project', 'Проект целиком (с ожидаемой датой завершения due_date): колонки (statuses — id нужны для создания и перемещения задач; последняя колонка = «выполнено»), все задачи с исполнителями и сроками, участники и моя роль.', { projectId: id('проекта') }, READ,
     (a, auth) => callApi(auth, 'GET', `/projects/${a.projectId}`)],
   ['create_project', 'Создать проект в команде (владелец или админ). Колонки создаются по умолчанию.', {
     teamId: id('команды'),
     name: z.string().min(1).max(255),
     description: z.string().optional(),
     visibility: z.enum(['team', 'selected']).optional().describe('team — видит вся команда; selected (по умолчанию) — только memberIds'),
-    memberIds: ids('Кто из команды видит проект при visibility = selected').optional()
+    memberIds: ids('Кто из команды видит проект при visibility = selected').optional(),
+    dueDate: date('Ожидаемая дата завершения проекта').optional()
   }, WRITE, (a, auth) => callApi(auth, 'POST', '/projects', compact(a))],
-  ['update_project', 'Изменить название и/или описание проекта (владелец или админ). Непереданные поля не меняются.', {
-    projectId: id('проекта'), name: z.string().min(1).max(255).optional(), description: z.string().optional().describe('Пустая строка — убрать описание')
+  ['update_project', 'Изменить название, описание и/или ожидаемую дату завершения проекта (владелец или админ). Непереданные поля не меняются.', {
+    projectId: id('проекта'), name: z.string().min(1).max(255).optional(), description: z.string().optional().describe('Пустая строка — убрать описание'),
+    dueDate: date('Ожидаемая дата завершения').nullable().optional().describe('null — убрать срок')
   }, WRITE, async (a, auth) => {
     // API требует оба поля и стирает описание, если его не передать, — подставляем текущие значения
     const current = await callApi(auth, 'GET', `/projects/${a.projectId}`);
     return callApi(auth, 'PATCH', `/projects/${a.projectId}`, {
       name: a.name ?? current.name,
-      description: a.description ?? current.description ?? ''
+      description: a.description ?? current.description ?? '',
+      ...(a.dueDate !== undefined ? { dueDate: a.dueDate } : {})
     });
   }],
+  ['list_project_attachments', 'Файлы, прикреплённые к самому проекту (не к задачам): имена, размеры, кто и когда загрузил.', { projectId: id('проекта') }, READ,
+    (a, auth) => callApi(auth, 'GET', `/projects/${a.projectId}/attachments`)],
+  ['delete_project_attachment', 'Удалить файл проекта (может тот, кто загрузил, или владелец/админ). Необратимо — спросите пользователя перед вызовом.', {
+    projectId: id('проекта'), fileId: id('файла проекта')
+  }, DESTRUCTIVE, (a, auth) => callApi(auth, 'DELETE', `/projects/${a.projectId}/attachments/${a.fileId}`)],
   ['delete_project', 'Удалить проект со всеми задачами и файлами (владелец или админ). Необратимо — спросите пользователя перед вызовом.', { projectId: id('проекта') }, DESTRUCTIVE,
     (a, auth) => callApi(auth, 'DELETE', `/projects/${a.projectId}`)],
   ['set_project_access', 'Кто из команды видит проект (владелец или админ). Заменяет весь список.', {

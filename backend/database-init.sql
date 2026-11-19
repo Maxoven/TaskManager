@@ -342,3 +342,18 @@ CREATE TABLE IF NOT EXISTS mail_accounts (
     last_error TEXT,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Ожидаемая дата завершения проекта (необязательная)
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS due_date DATE;
+
+-- Файлы, прикреплённые к самому проекту (а не к задаче): договоры, ТЗ, сметы и т. п.
+CREATE TABLE IF NOT EXISTS project_attachments (
+    id SERIAL PRIMARY KEY,
+    project_id INT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    filename VARCHAR(255) NOT NULL,
+    original_name VARCHAR(255) NOT NULL,
+    file_size INT NOT NULL,
+    uploaded_by INT REFERENCES users(id) ON DELETE SET NULL,
+    uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_project_attachments_project ON project_attachments(project_id);

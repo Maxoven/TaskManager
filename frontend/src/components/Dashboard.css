@@ -1240,3 +1240,22 @@
     display: inline;
   }
 }
+
+/* Срок проекта на карточке */
+.project-card-due {
+  align-self: flex-start;
+  margin-bottom: var(--space-2);
+}
+
+/* Показать / скрыть проекты без задач */
+.empty-projects-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.empty-projects-toggle .btn-secondary {
+  gap: 6px;
+}

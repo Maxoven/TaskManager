@@ -1,11 +1,10 @@
 const express = require('express');
-const multer = require('multer');
-const path = require('path');
 const fs = require('fs');
 const pool = require('../config/database');
 const { withTransaction } = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const { sendTaskAssigned } = require('../services/email');
+const { upload, uploadedPath, removeUploadedFile, discardUpload } = require('../services/uploads');
 const { canSeeProjectSql, getTeamRole, isManager } = require('../services/access');
 
 const router = express.Router();
@@ -18,40 +17,6 @@ const requireNumericParam = (req, res, next, value) => {
 router.param('id', requireNumericParam);
 router.param('taskId', requireNumericParam);
 router.param('fileId', requireNumericParam);
-
-// Файлы задач лежат вне папки, которую раздаёт nginx (/uploads/), —
-// скачать их можно только через API с проверкой доступа к проекту
-const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../storage/uploads');
-
-// Настройка multer
-const ALLOWED_EXT = new Set([
-  '.jpg', '.jpeg', '.png', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.zip', '.rar'
-]);
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    fs.mkdir(UPLOADS_DIR, { recursive: true }, (err) => cb(err, UPLOADS_DIR));
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
-const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: function (req, file, cb) {
-    // multer отдаёт имя файла в latin1 — без перекодировки кириллица превращается в «Ð¾Ñ‚Ñ‡Ñ‘Ñ‚»
-    file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
-    // Проверяем именно расширение: MIME-тип присылает клиент, ему доверять нельзя
-    if (ALLOWED_EXT.has(path.extname(file.originalname).toLowerCase())) {
-      return cb(null, true);
-    }
-    const err = new Error('Unsupported file format');
-    err.code = 'UNSUPPORTED_FILE';
-    cb(err);
-  }
-});
 
 // Поля задачи + исполнители, вложения, отчёт и связи одним запросом
 const TASK_FIELDS = `
@@ -70,13 +35,6 @@ const TASK_FIELDS = `
     FROM task_dependencies d WHERE d.task_id = t.id
   ), '[]') AS dependencies
 `;
-
-// Удаление файла с диска — в фоне и без падения, если файла уже нет
-function removeUploadedFile(filename) {
-  fs.unlink(path.join(UPLOADS_DIR, filename), (err) => {
-    if (err && err.code !== 'ENOENT') console.error('Не удалось удалить файл:', err.message);
-  });
-}
 
 async function fetchTask(db, taskId) {
   const { rows } = await db.query(`SELECT ${TASK_FIELDS} FROM tasks t WHERE t.id = $1`, [taskId]);
@@ -452,7 +410,7 @@ router.post('/:id/attachments', requireTaskAccess, upload.single('file'), async 
     });
   } catch (error) {
     console.error(error);
-    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    discardUpload(req.file);
     res.status(500).json({ error: req.t('fileUploadError') });
   }
 });
@@ -481,7 +439,7 @@ router.get('/:taskId/attachments/:fileId/download', requireTaskAccess, async (re
       'SELECT * FROM task_attachments WHERE id = $1 AND task_id = $2', [fileId, taskId]
     );
     if (files.length === 0) return res.status(404).json({ error: req.t('fileNotFound') });
-    const filePath = path.join(UPLOADS_DIR, files[0].filename);
+    const filePath = uploadedPath(files[0].filename);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: req.t('fileMissingOnServer') });
     res.download(filePath, files[0].original_name);
   } catch (error) {

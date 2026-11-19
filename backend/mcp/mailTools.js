@@ -40,10 +40,10 @@ async function downloadTaskFile(auth, taskId, fileId) {
   return { filename: meta.original_name, content: Buffer.from(await res.arrayBuffer()) };
 }
 
-async function uploadToTask(auth, taskId, filename, content, contentType) {
+async function uploadFile(auth, apiPath, filename, content, contentType) {
   const form = new FormData();
   form.append('file', new Blob([content], { type: contentType || 'application/octet-stream' }), filename);
-  const res = await fetch(`${API()}/tasks/${taskId}/attachments`, {
+  const res = await fetch(`${API()}${apiPath}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${userToken(auth)}`, 'X-Lang': auth.extra.language || 'ru' },
     body: form
@@ -158,7 +158,15 @@ const TOOLS = [
     taskId: z.number().int().positive()
   }, WRITE, async (a, account, auth) => {
     const att = await mail.getAttachment(account, a);
-    return json({ task_id: a.taskId, ...(await uploadToTask(auth, a.taskId, att.filename, att.content, att.contentType)) });
+    return json({ task_id: a.taskId, ...(await uploadFile(auth, `/tasks/${a.taskId}/attachments`, att.filename, att.content, att.contentType)) });
+  }],
+
+  ['mail_attachment_to_project', 'Сохранить вложение письма в файлы самого проекта (договор, смета, ТЗ — то, что относится к проекту целиком). Форматы и размер — как при обычной загрузке: до 10 МБ.', {
+    folder, uid, index: z.number().int().min(0).describe('Номер вложения из mail_read'),
+    projectId: z.number().int().positive()
+  }, WRITE, async (a, account, auth) => {
+    const att = await mail.getAttachment(account, a);
+    return json({ project_id: a.projectId, ...(await uploadFile(auth, `/projects/${a.projectId}/attachments`, att.filename, att.content, att.contentType)) });
   }]
 ];
 

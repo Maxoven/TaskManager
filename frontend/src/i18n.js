@@ -191,6 +191,26 @@ const translations = {
     // Навигация
     logout: "Выйти",
 
+    // Срок и файлы проекта, пустые проекты
+    projectDueLabel: 'Ожидаемая дата завершения',
+    projectDueHint: 'Необязательно. Видна на карточке проекта, на доске и на графике.',
+    projectDueChip: 'Срок проекта: {date}',
+    projectDueTitle: 'Ожидаемая дата завершения проекта',
+    projectDueOverdue: 'просрочен',
+    ganttProjectDue: 'Срок проекта — {date}',
+    showEmptyProjects: 'Показать пустые проекты ({count})',
+    hideEmptyProjects: 'Скрыть пустые проекты',
+    emptyProjectsHint: 'Проекты без задач скрыты, чтобы не мешали.',
+    projectFilesBtn: 'Файлы проекта',
+    projectFilesBtnTitle: 'Файлы, которые относятся ко всему проекту: договоры, ТЗ, сметы',
+    projectFilesTitle: 'Файлы проекта',
+    projectFilesIntro: 'Документы, которые относятся ко всему проекту «{name}», а не к одной задаче: договор, ТЗ, смета. Их видят все участники проекта.',
+    projectFilesEmpty: 'Файлов пока нет. Добавьте договор, ТЗ или смету — их увидят все участники проекта.',
+    projectFilesAdd: 'Добавить файлы',
+    projectFilesUploaded: 'Загружено файлов: {count}',
+    fileDeletedToast: 'Файл «{name}» удалён',
+    projectFileDeleteMessage: 'Файл пропадёт из проекта у всех участников. Отменить это нельзя.',
+
     // Входящие, быстрое добавление и голосовой ввод
     mainNav: 'Основная навигация',
     inboxTitle: 'Входящие',
@@ -419,7 +439,7 @@ const translations = {
     projectNamePlaceholder: "Например: Запуск сайта",
     projectDescLabel: 'Описание',
     projectDescPlaceholder: "Коротко, о чём проект (необязательно)",
-    editProjectTitle: "Название и описание проекта",
+    editProjectTitle: "Изменить проект",
 
     // Dashboard — invitations
     projectInvitationsTitle: 'Приглашения в проекты',
@@ -449,7 +469,7 @@ const translations = {
     sortByDeadline: 'По дедлайну',
     sortByTitle: 'По названию',
     resetFilters: "Сбросить",
-    editProjectModalTitle: "Название и описание проекта",
+    editProjectModalTitle: 'Изменить проект',
     inviteBtn: "Отправить приглашение",
     pendingTag: "ждём ответа",
     readMore: "Показать полностью",
@@ -863,6 +883,26 @@ const translations = {
     // Navigation
     logout: "Log out",
 
+    // Project due date, files, empty projects
+    projectDueLabel: 'Expected end date',
+    projectDueHint: 'Optional. Shown on the project card, the board and the timeline.',
+    projectDueChip: 'Project due: {date}',
+    projectDueTitle: 'Expected end date of the project',
+    projectDueOverdue: 'overdue',
+    ganttProjectDue: 'Project due — {date}',
+    showEmptyProjects: 'Show empty projects ({count})',
+    hideEmptyProjects: 'Hide empty projects',
+    emptyProjectsHint: 'Projects without tasks are hidden to reduce clutter.',
+    projectFilesBtn: 'Project files',
+    projectFilesBtnTitle: 'Files that belong to the whole project: contracts, specs, estimates',
+    projectFilesTitle: 'Project files',
+    projectFilesIntro: 'Documents that belong to the whole project “{name}” rather than one task: contract, spec, estimate. Everyone in the project sees them.',
+    projectFilesEmpty: 'No files yet. Add the contract, spec or estimate — everyone in the project will see them.',
+    projectFilesAdd: 'Add files',
+    projectFilesUploaded: 'Files uploaded: {count}',
+    fileDeletedToast: 'File “{name}” deleted',
+    projectFileDeleteMessage: 'The file will be removed from the project for everyone. This cannot be undone.',
+
     // Inbox, quick add and voice capture
     mainNav: 'Main navigation',
     inboxTitle: 'Inbox',
@@ -1091,7 +1131,7 @@ const translations = {
     projectNamePlaceholder: "For example: Website launch",
     projectDescLabel: 'Description',
     projectDescPlaceholder: "Briefly, what the project is about (optional)",
-    editProjectTitle: "Project name and description",
+    editProjectTitle: "Edit project",
 
     // Dashboard — invitations
     projectInvitationsTitle: 'Project invitations',
@@ -1121,7 +1161,7 @@ const translations = {
     sortByDeadline: 'By deadline',
     sortByTitle: 'By title',
     resetFilters: "Reset",
-    editProjectModalTitle: "Project name and description",
+    editProjectModalTitle: "Edit project",
     inviteBtn: 'Send invitation',
     pendingTag: "waiting for reply",
     readMore: "Show all",

@@ -381,3 +381,21 @@
     display: none;
   }
 }
+
+/* Ожидаемая дата завершения проекта: пунктир, чтобы не путать с линией «сегодня» */
+.gantt-project-due-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 2px dashed var(--status-danger-solid);
+  z-index: 3;
+  pointer-events: auto;
+}
+
+.legend-project-due {
+  display: inline-block;
+  width: 0;
+  height: 14px;
+  border-left: 2px dashed var(--status-danger-solid);
+}

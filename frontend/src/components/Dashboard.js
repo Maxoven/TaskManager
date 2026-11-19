@@ -15,6 +15,7 @@ import Icon from './Icon';
 import Avatar from './Avatar';
 import { DashboardSkeleton } from './Skeleton';
 import { formatDate, deadlineState, DEADLINE_CHIP, DEADLINE_ICON } from '../utils/date';
+import ProjectDueChip from './ProjectDueChip';
 import apiError from '../utils/apiError';
 import {
   getProjects, createProject, updateProject, deleteProject,
@@ -24,6 +25,26 @@ import {
 import './Dashboard.css';
 
 const TABS = ['projects', 'mytasks', 'workload', 'team'];
+const SHOW_EMPTY_KEY = 'showEmptyProjects';
+
+const readShowEmpty = () => {
+  try { return localStorage.getItem(SHOW_EMPTY_KEY) === '1'; } catch (e) { return false; }
+};
+
+// Кнопка под списком проектов: показать / скрыть проекты без задач
+function EmptyProjectsToggle({ count, shown, onToggle }) {
+  const { t } = useLanguage();
+  if (count === 0) return null;
+  return (
+    <div className="empty-projects-toggle">
+      <button type="button" className="btn-secondary" onClick={onToggle} aria-expanded={shown}>
+        <Icon name={shown ? 'chevron-down' : 'chevron-right'} size={15} />
+        {shown ? t('hideEmptyProjects') : t('showEmptyProjects', { count })}
+      </button>
+      {!shown && <span className="field-hint">{t('emptyProjectsHint')}</span>}
+    </div>
+  );
+}
 
 // Прогресс проекта на карточке: выполнено / всего и просрочки
 function ProjectStats({ project }) {
@@ -50,7 +71,11 @@ function ProjectStats({ project }) {
 // При создании ещё и «Кто видит проект»: по умолчанию только отмеченные люди команды.
 function ProjectFormModal({ project, onSubmit, onClose, teamName, teamId, userId }) {
   const { t } = useLanguage();
-  const [form, setForm] = useState({ name: project?.name || '', description: project?.description || '' });
+  const [form, setForm] = useState({
+    name: project?.name || '',
+    description: project?.description || '',
+    dueDate: project?.due_date ? String(project.due_date).slice(0, 10) : ''
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [roster, setRoster] = useState(null);
@@ -67,7 +92,8 @@ function ProjectFormModal({ project, onSubmit, onClose, teamName, teamId, userId
     e.preventDefault();
     setError(''); setSaving(true);
     try {
-      await onSubmit(project ? form : { ...form, ...accessPayload(access) });
+      const payload = { ...form, dueDate: form.dueDate || null };
+      await onSubmit(project ? payload : { ...payload, ...accessPayload(access) });
     } catch (err) {
       setError(apiError(err, t, project ? 'projectUpdateError' : 'projectCreateError'));
       setSaving(false);
@@ -89,6 +115,11 @@ function ProjectFormModal({ project, onSubmit, onClose, teamName, teamId, userId
         <div className="form-group">
           <label htmlFor="project-description">{t('projectDescLabel')}</label>
           <textarea id="project-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={t('projectDescPlaceholder')} rows="3" />
+        </div>
+        <div className="form-group project-due-field">
+          <label htmlFor="project-due">{t('projectDueLabel')}</label>
+          <input id="project-due" type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
+          <p className="field-hint">{t('projectDueHint')}</p>
         </div>
         {project && <p className="field-hint edit-access-hint"><Icon name="lock" size={13} /> {t('editAccessWhereHint')}</p>}
         {!project && (roster
@@ -123,6 +154,7 @@ function ProjectCard({ project, canManage, onEdit, onDelete }) {
           <Icon name="lock" size={13} />{t('accessCountChip', { count: project.access_count, total: project.team_size })}
         </p>
       )}
+      <ProjectDueChip project={project} className="project-card-due" />
       <ProjectStats project={project} />
       {canManage && (
         <div className="project-card-actions" onClick={(e) => e.stopPropagation()}>
@@ -151,7 +183,15 @@ function Dashboard({ user, onLogout }) {
   const [savingOrder, setSavingOrder] = useState(false);
   const [busyKey, setBusyKey] = useState('');
   const [myTasksTab, setMyTasksTab] = useState('active');
+  // Пустые проекты (без задач) по умолчанию скрыты — выбор запоминается в браузере
+  const [showEmpty, setShowEmpty] = useState(readShowEmpty);
   const navigate = useNavigate();
+
+  const toggleEmpty = () => setShowEmpty(prev => {
+    const next = !prev;
+    try { localStorage.setItem(SHOW_EMPTY_KEY, next ? '1' : '0'); } catch (e) { /* localStorage недоступен */ }
+    return next;
+  });
 
   const isShared = current === SHARED;
   const myRole = currentTeam?.role;
@@ -330,10 +370,19 @@ function Dashboard({ user, onLogout }) {
   const doneTasks = scopeTasks.filter(task => task.is_done);
   const overdueCount = activeTasks.filter(task => deadlineState(task) === 'overdue').length;
 
+  // По умолчанию показываем только проекты с задачами; пустые — по кнопке.
+  // Если задач нет ни в одном проекте, показываем все, иначе экран выглядел бы пустым.
+  const emptyProjects = scopeProjects.filter(p => !(Number(p.tasks_total) > 0));
+  const hideEmpty = !showEmpty && emptyProjects.length < scopeProjects.length;
+  const shownProjects = hideEmpty ? scopeProjects.filter(p => Number(p.tasks_total) > 0) : scopeProjects;
+  const emptyToggle = emptyProjects.length > 0 && emptyProjects.length < scopeProjects.length && (
+    <EmptyProjectsToggle count={emptyProjects.length} shown={showEmpty} onToggle={toggleEmpty} />
+  );
+
   // Гостевые проекты группируем по команде, которой они принадлежат
   const sharedGroups = [];
   if (isShared) {
-    scopeProjects.forEach(p => {
+    shownProjects.forEach(p => {
       let group = sharedGroups.find(g => g.teamId === p.team_id);
       if (!group) { group = { teamId: p.team_id, name: p.team_name, projects: [] }; sharedGroups.push(group); }
       group.projects.push(p);
@@ -493,6 +542,7 @@ function Dashboard({ user, onLogout }) {
                   </div>
                 </section>
               ))}
+              {emptyToggle}
             </>
           ) : (
             <>
@@ -528,11 +578,14 @@ function Dashboard({ user, onLogout }) {
                   )}
                 </div>
               ) : (
-                <div className="projects-grid">
-                  {scopeProjects.map(project => (
-                    <ProjectCard key={project.id} project={project} canManage={canManage} onEdit={setEditProject} onDelete={handleDeleteProject} />
-                  ))}
-                </div>
+                <>
+                  <div className="projects-grid">
+                    {shownProjects.map(project => (
+                      <ProjectCard key={project.id} project={project} canManage={canManage} onEdit={setEditProject} onDelete={handleDeleteProject} />
+                    ))}
+                  </div>
+                  {emptyToggle}
+                </>
               )}
             </>
           )}

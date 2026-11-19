@@ -34,7 +34,7 @@ function UndatedTasks({ tasks, onTaskClick }) {
   );
 }
 
-function GanttChart({ tasks, onTaskClick, onAddTask, members }) {
+function GanttChart({ tasks, onTaskClick, onAddTask, members, projectDue }) {
   const { t, lang } = useLanguage();
   const dateLocale = lang === 'ru' ? ru : undefined;
   const today = startOfDay(new Date());
@@ -58,8 +58,13 @@ function GanttChart({ tasks, onTaskClick, onAddTask, members }) {
       if (taskStart < start) start = taskStart;
       if (taskEnd > end) end = taskEnd;
     });
+    // Срок проекта тоже должен попасть на шкалу
+    if (projectDue) {
+      const dueEnd = addDays(startOfDay(parseDate(projectDue)), 14);
+      if (dueEnd > end) end = dueEnd;
+    }
     return { viewStart: start, periodDays: differenceInDays(end, start) + 1 };
-  }, [tasks, todayTime]);
+  }, [tasks, todayTime, projectDue]);
 
   const viewEnd = addDays(viewStart, periodDays - 1);
   const totalWidth = periodDays * DAY_PX;
@@ -203,6 +208,12 @@ function GanttChart({ tasks, onTaskClick, onAddTask, members }) {
               <span>{t(key)}</span>
             </div>
           ))}
+          {projectDue && (
+            <div className="legend-item">
+              <span className="legend-project-due" aria-hidden="true" />
+              <span>{t('ganttProjectDue', { date: formatDate(projectDue, lang) })}</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -278,6 +289,14 @@ function GanttChart({ tasks, onTaskClick, onAddTask, members }) {
               {todayPx >= 0 && todayPx <= totalWidth && (
                 <div className="gantt-today-line" style={{ left: todayPx }} />
               )}
+
+              {/* Ожидаемая дата завершения проекта — по правому краю этого дня */}
+              {projectDue && (() => {
+                const duePx = dateToPx(projectDue) + DAY_PX;
+                return duePx >= 0 && duePx <= totalWidth
+                  ? <div className="gantt-project-due-line" style={{ left: duePx }} title={t('ganttProjectDue', { date: formatDate(projectDue, lang) })} />
+                  : null;
+              })()}
 
               {/* SVG стрелки связей */}
               <svg className="gantt-arrows" width={totalWidth} height={bodyHeight} aria-hidden="true">

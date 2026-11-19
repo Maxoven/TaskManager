@@ -4,6 +4,8 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { getProject, createTask, updateTask, deleteTask, updateProject, uploadFile } from '../services/api';
 import TaskModal from './TaskModal';
 import ProjectMembersModal from './ProjectMembersModal';
+import ProjectFilesModal from './ProjectFilesModal';
+import ProjectDueChip from './ProjectDueChip';
 import Modal from './Modal';
 import { useFeedback } from '../context/FeedbackContext';
 import apiError from '../utils/apiError';
@@ -34,9 +36,10 @@ function KanbanBoard({ user, onLogout }) {
   const [selectedStatus, setSelectedStatus] = useState(null);
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showFilesModal, setShowFilesModal] = useState(false);
   const [savingProject, setSavingProject] = useState(false);
   const [editError, setEditError] = useState('');
-  const [editForm, setEditForm] = useState({ name: '', description: '' });
+  const [editForm, setEditForm] = useState({ name: '', description: '', dueDate: '' });
   const [showFullDesc, setShowFullDesc] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -99,6 +102,12 @@ function KanbanBoard({ user, onLogout }) {
 
   // Последняя колонка считается «выполнено» — не зависит от её названия и языка
   const doneStatusId = statuses.length ? statuses[statuses.length - 1].id : null;
+  // Для метки срока проекта: «выполнен», когда все задачи в последней колонке
+  const projectWithProgress = project && {
+    ...project,
+    tasks_total: tasks.length,
+    tasks_done: tasks.filter(task => task.status_id === doneStatusId).length
+  };
   const tasksWithState = tasks.map(task => ({
     ...task,
     is_done: task.status_id === doneStatusId,
@@ -189,7 +198,7 @@ function KanbanBoard({ user, onLogout }) {
     e.preventDefault();
     setEditError(''); setSavingProject(true);
     try {
-      await updateProject(id, editForm);
+      await updateProject(id, { ...editForm, dueDate: editForm.dueDate || null });
       setShowEditModal(false);
       notify.success(t('projectSavedToast'));
       loadProject();
@@ -278,10 +287,15 @@ function KanbanBoard({ user, onLogout }) {
                 <button
                   type="button"
                   className="btn-small btn-edit-project"
-                  onClick={() => { setEditForm({ name: project.name, description: project.description || '' }); setEditError(''); setShowEditModal(true); }}
+                  onClick={() => { setEditForm({ name: project.name, description: project.description || '', dueDate: project.due_date ? String(project.due_date).slice(0, 10) : '' }); setEditError(''); setShowEditModal(true); }}
                   aria-label={t('editProjectBtnTitle')}
                 ><Icon name="pencil" size={14} />{t('editShort')}</button>
               )}
+              <button type="button" className="btn-small btn-project-files" onClick={() => setShowFilesModal(true)} title={t('projectFilesBtnTitle')}>
+                <Icon name="paperclip" size={14} />{t('projectFilesBtn')}
+                {project?.files_count > 0 && <span className="count-badge">{project.files_count}</span>}
+              </button>
+              <ProjectDueChip project={projectWithProgress} />
             </div>
             {project?.description && (
               <p className="project-desc">
@@ -466,6 +480,7 @@ function KanbanBoard({ user, onLogout }) {
           members={approvedMembers}
           onTaskClick={openTask}
           onAddTask={() => openNewTask(statuses[0]?.id)}
+          projectDue={project?.due_date}
         />
       )}
 
@@ -495,6 +510,11 @@ function KanbanBoard({ user, onLogout }) {
               <label htmlFor="edit-project-description">{t('projectDescLabel')}</label>
               <textarea id="edit-project-description" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} rows="3" />
             </div>
+            <div className="form-group project-due-field">
+              <label htmlFor="edit-project-due">{t('projectDueLabel')}</label>
+              <input id="edit-project-due" type="date" value={editForm.dueDate} onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })} />
+              <p className="field-hint">{t('projectDueHint')}</p>
+            </div>
             <p className="field-hint edit-access-hint"><Icon name="lock" size={13} /> {t('editAccessWhereHint')}</p>
             {editError && <div className="error" role="alert">{editError}</div>}
             <div className="modal-actions">
@@ -505,6 +525,17 @@ function KanbanBoard({ user, onLogout }) {
             </div>
           </form>
         </Modal>
+      )}
+
+      {/* Файлы самого проекта */}
+      {showFilesModal && (
+        <ProjectFilesModal
+          project={project}
+          user={user}
+          canManage={canManage}
+          onChanged={loadProject}
+          onClose={() => setShowFilesModal(false)}
+        />
       )}
 
       {/* Участники и приглашения */}

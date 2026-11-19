@@ -638,3 +638,48 @@
     max-width: none;
   }
 }
+
+/* Файлы проекта и срок — рядом с названием */
+.btn-project-files {
+  gap: 6px;
+}
+
+.project-title-row .project-due-chip {
+  white-space: nowrap;
+}
+
+.project-files-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.project-files-empty p {
+  margin: 0;
+  max-width: 40ch;
+}
+
+.project-files-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-sunken);
+}
+
+.modal.project-files-modal {
+  max-width: 600px;
+}
+
+.project-title-row {
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
+}

@@ -1,17 +1,14 @@
 const express = require('express');
 const fs = require('fs');
-const path = require('path');
 const pool = require('../config/database');
 const { withTransaction } = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const { sendProjectInvitation } = require('../services/email');
 const { canSeeProjectSql, teamSeesProjectSql, projectRoleSql, getProjectRole, getTeamRole, isManager } = require('../services/access');
+const { upload, uploadedPath, removeUploadedFile, discardUpload } = require('../services/uploads');
 
 const router = express.Router();
 router.use(authMiddleware);
-
-// Та же папка, что в routes/tasks.js
-const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../storage/uploads');
 
 // Нечисловой id в адресе — это 404, а не ошибка SQL «invalid input syntax for integer»
 const requireNumericParam = (req, res, next, value) => {
@@ -20,8 +17,15 @@ const requireNumericParam = (req, res, next, value) => {
 };
 router.param('id', requireNumericParam);
 router.param('userId', requireNumericParam);
+router.param('fileId', requireNumericParam);
 
 const cleanText = (value) => (typeof value === 'string' ? value.trim() : '');
+// Ожидаемая дата завершения: 'YYYY-MM-DD', пусто/null — без срока, undefined — не менять
+const parseDueDate = (value) => {
+  if (value === undefined) return { skip: true };
+  if (value === null || value === '') return { value: null };
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !isNaN(Date.parse(value)) ? { value } : { invalid: true };
+};
 
 // Проект + моя роль в нём; строки нет — доступа нет
 const PROJECT_ACCESS_SQL = `
@@ -72,13 +76,9 @@ async function saveProjectAccess(db, projectId, teamId, visibility, memberIds, a
   return lost;
 }
 
-// Удалить с диска файлы задач проектов (записи в БД уходят каскадно)
+// Удалить с диска файлы задач и самого проекта (записи в БД уходят каскадно)
 function unlinkAttachments(attachments) {
-  attachments.forEach(att => {
-    fs.unlink(path.join(UPLOADS_DIR, att.filename), (err) => {
-      if (err && err.code !== 'ENOENT') console.error('Не удалось удалить файл:', err.message);
-    });
-  });
+  attachments.forEach(att => removeUploadedFile(att.filename));
 }
 
 // Все проекты, к которым у меня есть доступ: проекты моих команд и гостевые.
@@ -138,13 +138,15 @@ router.post('/', async (req, res) => {
     const visibility = VISIBILITIES.includes(req.body.visibility) ? req.body.visibility : 'selected';
     const memberIds = toIds(req.body.memberIds);
     const statusNames = req.t('defaultStatuses');
+    const due = parseDueDate(req.body.dueDate);
+    if (due.invalid) return res.status(400).json({ error: req.t('projectDueInvalid') });
 
     const project = await withTransaction(async (client) => {
       const { rows: [created] } = await client.query(`
-        INSERT INTO projects (name, description, owner_id, team_id, sort_order)
-        VALUES ($1, $2, $3, $4, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM projects WHERE team_id = $4))
+        INSERT INTO projects (name, description, owner_id, team_id, due_date, sort_order)
+        VALUES ($1, $2, $3, $4, $5, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM projects WHERE team_id = $4))
         RETURNING *
-      `, [name, description, req.userId, teamId]);
+      `, [name, description, req.userId, teamId, due.value ?? null]);
 
       await client.query(`
         INSERT INTO statuses (project_id, name, position)
@@ -162,7 +164,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Обновить проект (название, описание)
+// Обновить проект (название, описание, ожидаемая дата завершения)
 router.patch('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -171,13 +173,16 @@ router.patch('/:id', async (req, res) => {
     if (!name) {
       return res.status(400).json({ error: req.t('projectNameRequired') });
     }
+    const due = parseDueDate(req.body.dueDate);
+    if (due.invalid) return res.status(400).json({ error: req.t('projectDueInvalid') });
 
     if (!isManager(await getProjectRole(pool, id, req.userId))) {
       return res.status(403).json({ error: req.t('onlyAdminsEdit') });
     }
     const { rows: updated } = await pool.query(
-      'UPDATE projects SET name = $1, description = $2 WHERE id = $3 RETURNING *',
-      [name, description, id]
+      `UPDATE projects SET name = $1, description = $2, due_date = CASE WHEN $4 THEN due_date ELSE $5::date END
+       WHERE id = $3 RETURNING *`,
+      [name, description, id, !!due.skip, due.value ?? null]
     );
     res.json(updated[0]);
   } catch (error) {
@@ -215,11 +220,13 @@ router.delete('/:id', async (req, res) => {
     if (!isManager(await getProjectRole(pool, id, req.userId))) {
       return res.status(403).json({ error: req.t('onlyAdminsDelete') });
     }
-    // Файлы задач каскадно удаляются из БД — запоминаем их, чтобы убрать и с диска
+    // Файлы задач и проекта каскадно удаляются из БД — запоминаем их, чтобы убрать и с диска
     const { rows: attachments } = await pool.query(`
       SELECT f.filename FROM task_attachments f
       JOIN tasks t ON t.id = f.task_id
       WHERE t.project_id = $1
+      UNION ALL
+      SELECT filename FROM project_attachments WHERE project_id = $1
     `, [id]);
     await pool.query('DELETE FROM projects WHERE id = $1', [id]);
     unlinkAttachments(attachments);
@@ -336,7 +343,11 @@ router.get('/:id', async (req, res) => {
       ORDER BY CASE tm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.name
     `, [id, access[0].team_id]);
 
-    res.json({ ...access[0], can_manage: canManage, statuses, tasks, members, team_roster: teamRoster });
+    const { rows: [{ files_count: filesCount }] } = await pool.query(
+      'SELECT COUNT(*)::int AS files_count FROM project_attachments WHERE project_id = $1', [id]
+    );
+
+    res.json({ ...access[0], can_manage: canManage, statuses, tasks, members, team_roster: teamRoster, files_count: filesCount });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: req.t('projectFetchError') });
@@ -479,6 +490,88 @@ router.patch('/:id/invitation/:action', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: req.t('invitationProcessError') });
+  }
+});
+
+// ─── Файлы проекта ──────────────────────────────────────────────────────────
+// Видят и добавляют все, у кого есть доступ к проекту (как файлы задач).
+// Удалить может тот, кто загрузил, или тот, кто ведёт проект.
+
+async function requireProjectAccess(req, res, next) {
+  try {
+    const role = await getProjectRole(pool, req.params.id, req.userId);
+    if (!role) return res.status(403).json({ error: req.t('accessDenied') });
+    req.projectRole = role;
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+router.get('/:id/attachments', requireProjectAccess, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT f.id, f.project_id, f.original_name, f.file_size, f.uploaded_by, f.uploaded_at, u.name AS uploader_name
+      FROM project_attachments f
+      LEFT JOIN users u ON u.id = f.uploaded_by
+      WHERE f.project_id = $1
+      ORDER BY f.uploaded_at DESC, f.id DESC
+    `, [req.params.id]);
+    res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: req.t('filesFetchError') });
+  }
+});
+
+router.post('/:id/attachments', requireProjectAccess, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: req.t('fileNotUploaded') });
+    const { rows: [file] } = await pool.query(`
+      INSERT INTO project_attachments (project_id, filename, original_name, file_size, uploaded_by)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id, project_id, original_name, file_size, uploaded_by, uploaded_at
+    `, [req.params.id, req.file.filename, req.file.originalname, req.file.size, req.userId]);
+    res.status(201).json(file);
+  } catch (error) {
+    console.error(error);
+    discardUpload(req.file);
+    res.status(500).json({ error: req.t('fileUploadError') });
+  }
+});
+
+router.get('/:id/attachments/:fileId/download', requireProjectAccess, async (req, res) => {
+  try {
+    const { rows: [file] } = await pool.query(
+      'SELECT filename, original_name FROM project_attachments WHERE id = $1 AND project_id = $2',
+      [req.params.fileId, req.params.id]
+    );
+    if (!file) return res.status(404).json({ error: req.t('fileNotFound') });
+    const filePath = uploadedPath(file.filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: req.t('fileMissingOnServer') });
+    res.download(filePath, file.original_name);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: req.t('fileDownloadError') });
+  }
+});
+
+router.delete('/:id/attachments/:fileId', requireProjectAccess, async (req, res) => {
+  try {
+    const { rows: [file] } = await pool.query(
+      'SELECT filename, uploaded_by FROM project_attachments WHERE id = $1 AND project_id = $2',
+      [req.params.fileId, req.params.id]
+    );
+    if (!file) return res.status(404).json({ error: req.t('fileNotFound') });
+    if (file.uploaded_by !== req.userId && !isManager(req.projectRole)) {
+      return res.status(403).json({ error: req.t('projectFileDeleteDenied') });
+    }
+    await pool.query('DELETE FROM project_attachments WHERE id = $1', [req.params.fileId]);
+    removeUploadedFile(file.filename);
+    res.json({ message: req.t('fileDeleted') });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: req.t('fileDeleteError') });
   }
 });
 

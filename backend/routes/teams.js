@@ -1,11 +1,10 @@
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const pool = require('../config/database');
 const { withTransaction } = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const { sendTeamInvitation } = require('../services/email');
 const { getTeamRole, isManager, canManageTeam, teamSeesProjectSql } = require('../services/access');
+const { removeUploadedFile } = require('../services/uploads');
 
 // Команды: пользователь может состоять в нескольких и переключаться между ними.
 // Роли — owner (создатель: состав команды, роли, все проекты), admin (создаёт проекты и ведёт доступные ему),
@@ -20,7 +19,6 @@ const requireNumericParam = (req, res, next, value) => {
 router.param('teamId', requireNumericParam);
 router.param('userId', requireNumericParam);
 
-const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../storage/uploads');
 const INVITE_ROLES = ['admin', 'member'];
 const cleanName = (value) => (typeof value === 'string' ? value.trim().slice(0, 100) : '');
 
@@ -193,13 +191,13 @@ router.delete('/:teamId', async (req, res) => {
       JOIN tasks t ON t.id = f.task_id
       JOIN projects p ON p.id = t.project_id
       WHERE p.team_id = $1
+      UNION ALL
+      SELECT f.filename FROM project_attachments f
+      JOIN projects p ON p.id = f.project_id
+      WHERE p.team_id = $1
     `, [teamId]);
     await pool.query('DELETE FROM teams WHERE id = $1', [teamId]);
-    attachments.forEach(att => {
-      fs.unlink(path.join(UPLOADS_DIR, att.filename), (err) => {
-        if (err && err.code !== 'ENOENT') console.error('Не удалось удалить файл:', err.message);
-      });
-    });
+    attachments.forEach(att => removeUploadedFile(att.filename));
     res.json({ message: req.t('teamDeleted') });
   } catch (error) {
     console.error(error);

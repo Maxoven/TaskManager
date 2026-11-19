@@ -7,16 +7,10 @@ import apiError from '../utils/apiError';
 import Modal from './Modal';
 import Icon from './Icon';
 import Avatar from './Avatar';
+import { MAX_FILE_SIZE, ACCEPT_ATTR, formatFileSize, splitValidFiles as splitFiles } from '../utils/files';
 import './TaskModal.css';
 
-export const MAX_FILE_SIZE = 10 * 1024 * 1024;
-const ALLOWED_EXT = ['jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'zip', 'rar'];
-
-const formatFileSize = (bytes) => {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-};
+export { MAX_FILE_SIZE };
 
 const initialForm = (task, defaultStatusId) => ({
   title: task?.title || '',
@@ -144,17 +138,7 @@ function TaskModal({ task, members, statuses, defaultStatusId, onSave, onDelete,
   };
 
   // Проверяем размер и формат до отправки, чтобы сразу сказать, какой файл не подошёл
-  const splitValidFiles = (fileList) => {
-    const valid = [];
-    const problems = [];
-    Array.from(fileList).forEach(file => {
-      const ext = (file.name.split('.').pop() || '').toLowerCase();
-      if (!ALLOWED_EXT.includes(ext)) problems.push(t('taskFileTypeError', { name: file.name }));
-      else if (file.size > MAX_FILE_SIZE) problems.push(t('taskFileSizeErrorNamed', { name: file.name }));
-      else valid.push(file);
-    });
-    return { valid, problems };
-  };
+  const splitValidFiles = (fileList) => splitFiles(fileList, t);
 
   const handleFilesSelected = async (e) => {
     const { valid, problems } = splitValidFiles(e.target.files || []);
@@ -424,7 +408,7 @@ function TaskModal({ task, members, statuses, defaultStatusId, onSave, onDelete,
               )}
             </>
           )}
-          <input ref={fileInputRef} type="file" multiple hidden onChange={handleFilesSelected} accept={ALLOWED_EXT.map(ext => `.${ext}`).join(',')} aria-label={t('taskAddFile')} />
+          <input ref={fileInputRef} type="file" multiple hidden onChange={handleFilesSelected} accept={ACCEPT_ATTR} aria-label={t('taskAddFile')} />
           <button type="button" className="btn-small btn-upload-file" onClick={() => fileInputRef.current?.click()} disabled={uploadingFile}>
             {uploadingFile ? <span className="spinner" aria-hidden="true" /> : <Icon name="paperclip" size={14} />}
             {uploadingFile ? t('taskUploading') : t('taskAddFile')}

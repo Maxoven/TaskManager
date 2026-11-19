@@ -78,6 +78,17 @@ export const downloadFile = (taskId, fileId) =>
   api.get(`/tasks/${taskId}/attachments/${fileId}/download`, { responseType: 'blob' });
 export const deleteFile = (taskId, fileId) => api.delete(`/tasks/${taskId}/attachments/${fileId}`);
 
+// Файлы самого проекта
+export const getProjectFiles = (projectId) => api.get(`/projects/${projectId}/attachments`);
+export const uploadProjectFile = (projectId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post(`/projects/${projectId}/attachments`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+export const downloadProjectFile = (projectId, fileId) =>
+  api.get(`/projects/${projectId}/attachments/${fileId}/download`, { responseType: 'blob' });
+export const deleteProjectFile = (projectId, fileId) => api.delete(`/projects/${projectId}/attachments/${fileId}`);
+
 // ИИ-ассистент
 export const getAssistant = () => api.get('/assistant');
 export const sendAssistantMessage = (text) => api.post('/assistant/messages', { text }, { timeout: 180000 });
