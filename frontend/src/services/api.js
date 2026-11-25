@@ -131,4 +131,9 @@ export const avatarUrl = (file) => (file ? `${API_URL}/avatars/${file}` : null);
 export const verifyEmail = (token) => api.get(`/auth/verify-email/${token}`);
 export const resendVerification = (email) => api.post('/auth/resend-verification', { email });
 
+// Заявки на регистрацию (страница по ссылке из письма одобряющему)
+export const getRegistrationRequest = (token) => api.get(`/auth/registration-requests/${token}`);
+export const approveRegistrationRequest = (token) => api.post(`/auth/registration-requests/${token}/approve`);
+export const rejectRegistrationRequest = (token) => api.post(`/auth/registration-requests/${token}/reject`);
+
 export default api;

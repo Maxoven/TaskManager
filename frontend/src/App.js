@@ -10,6 +10,7 @@ import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
 import ReportForm from './components/ReportForm';
 import VerifyEmail from './components/VerifyEmail';
+import RegistrationRequest from './components/RegistrationRequest';
 import Inbox from './components/Inbox';
 import { LanguageProvider } from './context/LanguageContext';
 import { FeedbackProvider } from './context/FeedbackContext';
@@ -71,6 +72,7 @@ function App() {
             <Route path="/reset-password/:token" element={<ResetPassword />} />
             <Route path="/verify-email/:token" element={<VerifyEmail onLogin={handleLogin} />} />
             <Route path="/report/:token" element={<ReportForm />} />
+            <Route path="/registration-requests/:token" element={<RegistrationRequest />} />
             <Route path="/" element={token ? <Dashboard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />
             <Route path="/project/:id" element={token ? <KanbanBoard user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />
             <Route path="/inbox" element={token ? <Inbox user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} />

@@ -300,7 +300,76 @@ async function sendTeamInvitation(to, inviterName, teamName, role) {
   await send(to, tpl.subject, layout(tpl));
 }
 
+// ─── Заявки на регистрацию ───────────────────────────────────────────────────
+// Тому, кто одобряет: кто просится и кнопка на страницу заявки (там «Разрешить» / «Отклонить»)
+async function sendRegistrationRequest(to, request, token) {
+  const lang = normalizeLang(to.language);
+  const who = `<strong>${escapeHtml(request.name)}</strong> (${escapeHtml(request.email)})`;
+  const href = `${FRONTEND_URL}/registration-requests/${token}`;
+  const tpl = lang === 'en'
+    ? {
+        subject: `Sign-up request: ${request.name} (${request.email})`,
+        title: 'New sign-up request',
+        paragraphs: [`${who} wants to join Task Manager.`, 'The email is not from a corporate domain, so the account will be created only after you allow it.'],
+        button: { href, label: 'Review request' },
+        note: 'The page has “Allow” and “Decline” buttons. Nothing happens until you press one.'
+      }
+    : {
+        subject: `Заявка на регистрацию: ${request.name} (${request.email})`,
+        title: 'Новая заявка на регистрацию',
+        paragraphs: [`${who} хочет зарегистрироваться в Task Manager.`, 'Почта не из корпоративного домена, поэтому аккаунт появится, только когда вы разрешите.'],
+        button: { href, label: 'Рассмотреть заявку' },
+        note: 'На странице заявки — кнопки «Разрешить» и «Отклонить». Пока вы не нажмёте одну из них, ничего не произойдёт.'
+      };
+  await send(to, tpl.subject, layout(tpl));
+}
+
+// Заявителю: одобрено — ссылка подтверждает почту и сразу входит
+async function sendRegistrationApproved(to, verifyToken) {
+  const lang = normalizeLang(to.language);
+  const name = escapeHtml(to.name);
+  const href = `${FRONTEND_URL}/verify-email/${verifyToken}`;
+  const tpl = lang === 'en'
+    ? {
+        subject: 'Your sign-up request is approved — Task Manager',
+        title: `Welcome, ${name}!`,
+        paragraphs: ['Your request to join Task Manager has been approved. Click the button to confirm your email and sign in.'],
+        button: { href, label: 'Sign in to Task Manager' },
+        note: 'The link is valid for <strong>7 days</strong>. Later you can sign in with the email and password you chose.'
+      }
+    : {
+        subject: 'Заявка на регистрацию одобрена — Task Manager',
+        title: `Добро пожаловать, ${name}!`,
+        paragraphs: ['Вашу заявку на регистрацию в Task Manager одобрили. Нажмите кнопку, чтобы подтвердить почту и войти.'],
+        button: { href, label: 'Войти в Task Manager' },
+        note: 'Ссылка действует <strong>7 дней</strong>. Потом входите с почтой и паролем, которые указали в заявке.'
+      };
+  await send(to, tpl.subject, layout(tpl));
+}
+
+async function sendRegistrationRejected(to) {
+  const lang = normalizeLang(to.language);
+  const name = escapeHtml(to.name);
+  const tpl = lang === 'en'
+    ? {
+        subject: 'Your sign-up request — Task Manager',
+        title: 'Sign-up request declined',
+        color: '#888888',
+        paragraphs: [`Hi, ${name}!`, 'Unfortunately, your request to join Task Manager was declined. If you think this is a mistake, contact the person who invited you.']
+      }
+    : {
+        subject: 'Заявка на регистрацию — Task Manager',
+        title: 'Заявка на регистрацию отклонена',
+        color: '#888888',
+        paragraphs: [`Привет, ${name}!`, 'К сожалению, заявку на регистрацию в Task Manager отклонили. Если это ошибка — свяжитесь с тем, кто вас пригласил.']
+      };
+  await send(to, tpl.subject, layout(tpl));
+}
+
 module.exports = {
+  sendRegistrationRequest,
+  sendRegistrationApproved,
+  sendRegistrationRejected,
   sendPasswordReset,
   sendTaskAssigned,
   sendDeadlineWarning,

@@ -6,7 +6,10 @@ const pool = require('../config/database');
 const { withTransaction } = require('../config/database');
 const authMiddleware = require('../middleware/auth');
 const { SUPPORTED } = require('../i18n/messages');
-const { sendPasswordReset, sendEmailVerification } = require('../services/email');
+const {
+  sendPasswordReset, sendEmailVerification,
+  sendRegistrationRequest, sendRegistrationApproved, sendRegistrationRejected
+} = require('../services/email');
 const rateLimit = require('../middleware/rateLimit');
 
 const router = express.Router();
@@ -18,6 +21,56 @@ const emailLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });
 // Email храним и ищем в нижнем регистре, иначе User@x.com и user@x.com — разные аккаунты
 const normalizeEmail = (value) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Почта из этих доменов регистрируется сразу; остальные — только по заявке, которую одобряет
+// REGISTRATION_APPROVER_EMAIL (письмо со ссылкой на страницу заявки)
+const OPEN_DOMAINS = (process.env.REGISTRATION_OPEN_DOMAINS || 'ecosana.club,ecoestate.tv')
+  .split(',').map(d => d.trim().toLowerCase()).filter(Boolean);
+const APPROVER_EMAIL = (process.env.REGISTRATION_APPROVER_EMAIL || 'maksim.vakulenko@ecosana.club').trim().toLowerCase();
+const needsApproval = (email) => !OPEN_DOMAINS.includes(email.split('@')[1]);
+const sha256 = (value) => crypto.createHash('sha256').update(String(value)).digest('hex');
+const APPROVED_LINK_MS = 7 * 24 * 60 * 60 * 1000; // ссылка «заявка одобрена» — неделя: письмо могут открыть не сразу
+
+async function approverRecipient() {
+  const { rows: [u] } = await pool.query('SELECT email, name, language FROM users WHERE LOWER(email) = $1', [APPROVER_EMAIL]);
+  return u || { email: APPROVER_EMAIL, name: '', language: 'ru' };
+}
+
+// Заявка вместо аккаунта. Повторная заявка с той же почтой обновляет прежнюю (новые имя и пароль).
+// Одобряющему пишем не чаще раза в час, чтобы формой нельзя было завалить его письмами;
+// в этом случае прежняя ссылка из письма остаётся рабочей.
+const REMIND_APPROVER_MS = 60 * 60 * 1000;
+
+async function createRegistrationRequest({ email, name, passwordHash, lang }) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const { rows: [pending] } = await pool.query(
+    `SELECT id, created_at FROM registration_requests WHERE LOWER(email) = $1 AND status = 'pending'`, [email]
+  );
+  const recent = pending && Date.now() - new Date(pending.created_at).getTime() < REMIND_APPROVER_MS;
+  let request;
+  if (pending && recent) {
+    ({ rows: [request] } = await pool.query(
+      `UPDATE registration_requests SET name = $2, password_hash = $3, language = $4
+       WHERE id = $1 RETURNING id, email, name`, [pending.id, name, passwordHash, lang]
+    ));
+    return request;
+  }
+  if (pending) {
+    ({ rows: [request] } = await pool.query(
+      `UPDATE registration_requests SET name = $2, password_hash = $3, language = $4, token_hash = $5, created_at = NOW()
+       WHERE id = $1 RETURNING id, email, name`, [pending.id, name, passwordHash, lang, sha256(token)]
+    ));
+  } else {
+    ({ rows: [request] } = await pool.query(
+      `INSERT INTO registration_requests (email, name, password_hash, language, token_hash)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id, email, name`, [email, name, passwordHash, lang, sha256(token)]
+    ));
+  }
+  sendRegistrationRequest(await approverRecipient(), request, token).catch(err =>
+    console.error('Ошибка отправки заявки на регистрацию:', err)
+  );
+  return request;
+}
 
 const publicUser = (user) => ({ id: user.id, email: user.email, name: user.name, language: user.language, avatar: user.avatar || null });
 
@@ -45,6 +98,12 @@ router.post('/register', authLimiter, async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+
+    if (needsApproval(email)) {
+      await createRegistrationRequest({ email, name, passwordHash, lang: req.lang });
+      return res.status(202).json({ message: req.t('registrationRequested'), pendingApproval: true });
+    }
+
     const { rows: [user] } = await pool.query(
       `INSERT INTO users (email, password_hash, name, language, is_verified)
        VALUES ($1, $2, $3, $4, FALSE) RETURNING id, email, name, language`,
@@ -84,6 +143,13 @@ router.post('/login', authLimiter, async (req, res) => {
     }
     const { rows: users } = await pool.query('SELECT * FROM users WHERE LOWER(email) = $1', [email]);
     if (users.length === 0) {
+      // Заявка ещё не рассмотрена — скажем об этом, но только тому, кто знает пароль из заявки
+      const { rows: [pending] } = await pool.query(
+        `SELECT password_hash FROM registration_requests WHERE LOWER(email) = $1 AND status = 'pending'`, [email]
+      );
+      if (pending && await bcrypt.compare(password, pending.password_hash)) {
+        return res.status(403).json({ error: req.t('registrationPending'), pendingApproval: true });
+      }
       return res.status(401).json({ error: req.t('invalidCredentials') });
     }
     const user = users[0];
@@ -138,6 +204,87 @@ router.patch('/language', authMiddleware, async (req, res) => {
     res.json({ message: req.t('languageSaved'), language });
   } catch (error) {
     console.error('Ошибка смены языка:', error);
+    res.status(500).json({ error: req.t('serverError') });
+  }
+});
+
+// ─── Заявки на регистрацию ───────────────────────────────────────────────────
+// Ссылка из письма одобряющему — сама по себе пропуск (как ссылка сброса пароля): токен из 32 случайных
+// байт, в базе только его хеш. Решение — только POST, чтобы почтовые сканеры, открывающие ссылки, ничего не нажали.
+async function findRequest(token, client = pool, lock = false) {
+  if (!/^[a-f0-9]{64}$/.test(String(token))) return null;
+  const { rows: [r] } = await client.query(
+    `SELECT * FROM registration_requests WHERE token_hash = $1${lock ? ' FOR UPDATE' : ''}`, [sha256(token)]
+  );
+  return r || null;
+}
+
+const publicRequest = (r) => ({ name: r.name, email: r.email, created_at: r.created_at, status: r.status, decided_at: r.decided_at });
+
+router.get('/registration-requests/:token', authLimiter, async (req, res) => {
+  try {
+    const request = await findRequest(req.params.token);
+    if (!request) return res.status(404).json({ error: req.t('registrationRequestNotFound') });
+    res.json(publicRequest(request));
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: req.t('serverError') });
+  }
+});
+
+router.post('/registration-requests/:token/approve', authLimiter, async (req, res) => {
+  try {
+    const verifyToken = crypto.randomBytes(32).toString('hex');
+    const result = await withTransaction(async (client) => {
+      const request = await findRequest(req.params.token, client, true);
+      if (!request) return { status: 404, error: 'registrationRequestNotFound' };
+      if (request.status !== 'pending') return { status: 409, error: 'registrationAlreadyDecided', request };
+      const { rows: existing } = await client.query('SELECT id FROM users WHERE LOWER(email) = $1', [request.email.toLowerCase()]);
+      if (existing.length) return { status: 409, error: 'userExists', request };
+
+      // Почту заявитель ещё не подтверждал: аккаунт создаётся неподтверждённым, ссылка в письме подтверждает и входит
+      const { rows: [user] } = await client.query(
+        `INSERT INTO users (email, password_hash, name, language, is_verified)
+         VALUES ($1, $2, $3, $4, FALSE) RETURNING id, email, name, language`,
+        [request.email.toLowerCase(), request.password_hash, request.name, request.language]
+      );
+      await client.query(
+        'INSERT INTO email_verification_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
+        [user.id, verifyToken, new Date(Date.now() + APPROVED_LINK_MS)]
+      );
+      const { rows: [updated] } = await client.query(
+        `UPDATE registration_requests SET status = 'approved', decided_at = NOW() WHERE id = $1 RETURNING *`, [request.id]
+      );
+      return { user, request: updated };
+    });
+    if (result.error) {
+      return res.status(result.status).json({ error: req.t(result.error), ...(result.request ? { request: publicRequest(result.request) } : {}) });
+    }
+    sendRegistrationApproved(result.user, verifyToken).catch(err =>
+      console.error('Ошибка отправки письма об одобрении заявки:', err)
+    );
+    res.json(publicRequest(result.request));
+  } catch (error) {
+    console.error('Ошибка одобрения заявки:', error);
+    res.status(500).json({ error: req.t('serverError') });
+  }
+});
+
+router.post('/registration-requests/:token/reject', authLimiter, async (req, res) => {
+  try {
+    const request = await findRequest(req.params.token);
+    if (!request) return res.status(404).json({ error: req.t('registrationRequestNotFound') });
+    const { rows: [updated] } = await pool.query(
+      `UPDATE registration_requests SET status = 'rejected', decided_at = NOW()
+       WHERE id = $1 AND status = 'pending' RETURNING *`, [request.id]
+    );
+    if (!updated) {
+      return res.status(409).json({ error: req.t('registrationAlreadyDecided'), request: publicRequest(request) });
+    }
+    sendRegistrationRejected(updated).catch(err => console.error('Ошибка отправки письма об отказе:', err));
+    res.json(publicRequest(updated));
+  } catch (error) {
+    console.error('Ошибка отклонения заявки:', error);
     res.status(500).json({ error: req.t('serverError') });
   }
 });

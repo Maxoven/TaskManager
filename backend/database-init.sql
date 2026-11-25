@@ -358,3 +358,20 @@ CREATE TABLE IF NOT EXISTS project_attachments (
     uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_project_attachments_project ON project_attachments(project_id);
+
+-- Заявки на регистрацию. С почтой не из корпоративных доменов (REGISTRATION_OPEN_DOMAINS) аккаунт
+-- сразу не создаётся: заявка уходит на одобрение (REGISTRATION_APPROVER_EMAIL), и только после
+-- «Разрешить» появляется пользователь. В письме — ссылка с токеном; в базе хранится только его SHA-256.
+CREATE TABLE IF NOT EXISTS registration_requests (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    language VARCHAR(2) NOT NULL DEFAULT 'ru',
+    token_hash CHAR(64) NOT NULL UNIQUE,
+    status VARCHAR(10) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    decided_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_registration_requests_pending
+    ON registration_requests (LOWER(email)) WHERE status = 'pending';

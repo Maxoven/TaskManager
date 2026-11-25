@@ -12,6 +12,7 @@ function Register() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [registered, setRegistered] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState(false);
   const [resend, setResend] = useState({ state: 'idle', text: '' }); // idle | sending | done | error
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -22,8 +23,9 @@ function Register() {
     if (formData.password !== formData.confirmPassword) { setError(t('registerPasswordMismatch')); return; }
     setLoading(true);
     try {
-      await register({ name: formData.name, email: formData.email, password: formData.password });
-      setRegistered(true);
+      const { data } = await register({ name: formData.name, email: formData.email, password: formData.password });
+      if (data?.pendingApproval) setPendingApproval(true);
+      else setRegistered(true);
     } catch (err) {
       setError(apiError(err, t, 'registerError'));
     } finally { setLoading(false); }
@@ -38,6 +40,18 @@ function Register() {
       setResend({ state: 'error', text: apiError(err, t, 'registerResendError') });
     }
   };
+
+  if (pendingApproval) {
+    return (
+      <AuthLayout>
+        <AuthStatus kind="mail" title={t('registerPendingTitle')}>
+          <p className="auth-status-text">{t('registerPendingText')} <strong>{formData.email}</strong></p>
+          <p className="auth-status-hint">{t('registerPendingHint')}</p>
+          <p className="auth-link"><Link to="/login"><Icon name="arrow-left" />{t('registerBackToLogin')}</Link></p>
+        </AuthStatus>
+      </AuthLayout>
+    );
+  }
 
   if (registered) {
     return (
