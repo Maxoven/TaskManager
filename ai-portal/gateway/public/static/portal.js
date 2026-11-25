@@ -1,6 +1,6 @@
 // Экран «Помощник»: простой чат поверх OpenCode. Ни моделей, ни терминала, ни настроек — человек пишет задачу
 // обычными словами, видит ответ, шаги работы простым языком, экран облачного браузера и свои файлы.
-import { renderMarkdown } from '/static/md.js';
+import { renderMarkdown } from './md.js';
 
 const $ = (id) => document.getElementById(id);
 const WORKSPACE = '/home/user/workspace';
@@ -23,7 +23,8 @@ const ICONS = {
   trash: '<path d="M4.5 7h15M9.5 7V4.8h5V7M6.5 7l.8 12a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4l.8-12M10 11v5.5M14 11v5.5"/>',
   logout: '<path d="M10 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2H10M15 8l4 4-4 4M19 12H9.5"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
-  alert: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.2v.2"/>'
+  alert: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.2v.2"/>',
+  grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>'
 };
 const icon = (name, size = 16) =>
   `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`;
@@ -678,6 +679,203 @@ async function attach(fileList) {
   $('input').focus();
 }
 
+// ─── Сервисы ────────────────────────────────────────────────────────────────
+async function svc(path, { method = 'GET', body } = {}, retried = false) {
+  const r = await fetch(`/api/services${path}`, {
+    method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined
+  });
+  if (r.status === 401) { toLogin(); throw new Error('Нужно войти'); }
+  if (r.status === 409 && !retried) { await wake(); return svc(path, { method, body }, true); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || 'Не получилось. Попробуйте ещё раз.');
+  return data;
+}
+
+const sv = { data: null, form: null, error: '', busy: null };
+let signin = null; // идёт вход в сервис на «Экране помощника»
+
+async function loadServices() {
+  try { sv.data = await svc(''); sv.error = sv.error || ''; }
+  catch (e) { if (!sv.data) sv.error = e.message; }
+  renderServices();
+}
+
+function openServices() {
+  sv.form = null; sv.error = '';
+  $('services-modal').hidden = false;
+  renderServices();
+  loadServices();
+}
+const closeServices = () => { $('services-modal').hidden = true; };
+
+const badge = (text, kind) => el('span', { className: `badge badge-${kind}`, html: kind === 'ok' ? icon('check', 12) : '' }, text);
+const smallBtn = (text, onClick, extra = '') => el('button', { className: `btn-small ${extra}`, type: 'button', textContent: text, on: { click: onClick } });
+const markClass = (name) => `service-mark m${[...name].reduce((a, c) => a + c.charCodeAt(0), 0) % 6}`;
+
+function tile({ name, about, mark }, ...actions) {
+  return el('div', { className: 'service' },
+    el('span', { className: mark || markClass(name), textContent: name.trim()[0].toUpperCase(), attrs: { 'aria-hidden': 'true' } }),
+    el('div', { className: 'service-info' },
+      el('div', { className: 'service-name', textContent: name }),
+      el('div', { className: 'service-about', textContent: about || '', title: about || '' })),
+    el('div', { className: 'service-actions' }, ...actions));
+}
+
+function field(id, label, props = {}, hint) {
+  return el('div', { className: 'form-group' },
+    el('label', { htmlFor: id, textContent: label }),
+    el('input', { id, ...props }),
+    hint ? el('p', { className: 'field-hint', textContent: hint }) : null);
+}
+
+function serviceForm(fields, submitLabel, onSubmit) {
+  const error = el('p', { className: 'field-error', hidden: true, attrs: { role: 'alert' } });
+  const submit = el('button', { className: 'btn-primary', type: 'submit', textContent: submitLabel });
+  const form = el('form', { className: 'service-form', on: { submit: async (e) => {
+    e.preventDefault();
+    error.hidden = true; submit.disabled = true;
+    submit.innerHTML = '<span class="spinner" aria-hidden="true"></span> Подключаем…';
+    try { await onSubmit(form); }
+    catch (err) { error.textContent = err.message; error.hidden = false; submit.disabled = false; submit.textContent = submitLabel; }
+  } } }, ...fields, error,
+    el('div', { className: 'service-form-actions' },
+      el('button', { className: 'btn-secondary', type: 'button', textContent: 'Отмена', on: { click: () => { sv.form = null; renderServices(); } } }),
+      submit));
+  return form;
+}
+
+function serviceActions(s) {
+  if (sv.busy === s.id) return [el('span', { className: 'spinner', attrs: { 'aria-label': 'Подождите' } })];
+  switch (s.state) {
+    case 'connected': return [badge('Подключено', 'ok'), smallBtn('Отключить', () => disconnectService(s), 'btn-small-danger')];
+    case 'soon': return [badge('Скоро', 'soon')];
+    case 'pending': return [badge('Подключается…', 'soon')];
+    case 'signin': return [smallBtn('Войти', () => connectService(s)), smallBtn('Убрать', () => disconnectService(s), 'btn-small-danger')];
+    case 'failed': return [smallBtn('Попробовать ещё раз', () => connectService(s)), smallBtn('Убрать', () => disconnectService(s), 'btn-small-danger')];
+    default: return [smallBtn('Подключить', () => connectService(s))];
+  }
+}
+
+function renderServices() {
+  const body = $('services-body');
+  if (!sv.data) {
+    body.replaceChildren(sv.error
+      ? el('div', { className: 'error', textContent: sv.error })
+      : el('div', { className: 'services-loading' }, el('span', { className: 'spinner' }), el('span', { textContent: 'Смотрим, что подключено…' })));
+    return;
+  }
+  const nodes = [];
+  if (sv.error) nodes.push(el('div', { className: 'error', textContent: sv.error, attrs: { role: 'alert' } }));
+
+  nodes.push(el('div', { className: 'services-section', textContent: 'Ваша работа' }));
+  const own = el('div', { className: 'service-list' },
+    tile({ name: 'Task Manager', about: 'Ваши задачи, проекты, сроки и «Входящие»', mark: 'service-mark m0' }, badge('Подключено', 'ok')));
+  const mail = sv.data.mail;
+  if (mail) {
+    own.append(mail.state === 'ok'
+      ? tile({ name: 'Рабочая почта', about: mail.email, mark: 'service-mark m0' }, badge('Подключено', 'ok'), smallBtn('Отключить', disconnectMail, 'btn-small-danger'))
+      : tile({ name: 'Рабочая почта', about: mail.email, mark: 'service-mark m0' },
+          sv.form === 'mail' ? null : smallBtn('Подключить', () => { sv.form = 'mail'; sv.error = ''; renderServices(); $('mail-password')?.focus(); })));
+    if (sv.form === 'mail' && mail.state !== 'ok') {
+      own.append(serviceForm(
+        [field('mail-password', `Пароль от почты ${mail.email}`, { type: 'password', autocomplete: 'off', required: true },
+          'Пароль хранится на сервере в зашифрованном виде и нужен, чтобы помощник читал и отправлял письма от вашего имени.')],
+        'Подключить почту',
+        async (form) => {
+          await svc('/mail', { method: 'POST', body: { password: form.querySelector('#mail-password').value } });
+          sv.form = null; toast('Почта подключена'); await loadServices();
+        }));
+    }
+  }
+  nodes.push(own);
+
+  nodes.push(el('div', { className: 'services-section', textContent: 'Другие сервисы' }));
+  nodes.push(el('div', { className: 'service-list' }, ...sv.data.services.map(s => tile(s, ...serviceActions(s)))));
+
+  if (sv.form === 'custom') {
+    nodes.push(serviceForm([
+      field('custom-name', 'Название', { type: 'text', required: true, maxLength: 40, placeholder: 'Например, CRM' }),
+      field('custom-url', 'Адрес сервиса', { type: 'url', required: true, placeholder: 'https://…' }, 'Адрес для подключения помощников (MCP). Его даёт сам сервис или ваш администратор.'),
+      field('custom-key', 'Ключ доступа (если есть)', { type: 'password', autocomplete: 'off' }, 'Если ключа нет, помощник попросит войти в сервис на «Экране помощника».')
+    ], 'Добавить', async (form) => {
+      const name = form.querySelector('#custom-name').value.trim();
+      const r = await svc('/custom', { method: 'POST', body: { name, url: form.querySelector('#custom-url').value.trim(), key: form.querySelector('#custom-key').value } });
+      sv.form = null;
+      afterConnect({ name }, r);
+      await loadServices();
+    }));
+  } else {
+    nodes.push(el('div', { className: 'services-add' },
+      el('button', { className: 'btn-secondary', type: 'button', html: `${icon('plus', 16)}Добавить другой сервис`,
+        on: { click: () => { sv.form = 'custom'; sv.error = ''; renderServices(); $('custom-name')?.focus(); } } })));
+  }
+  body.replaceChildren(...nodes);
+}
+
+function afterConnect(s, r) {
+  if (r.state === 'connected') toast(`«${s.name}» подключён`);
+  else if (r.state === 'signin') startSignin(s, r);
+  else toast('Сервис подключается — загляните в «Сервисы» через минуту');
+}
+
+async function connectService(s) {
+  sv.busy = s.id; sv.error = ''; renderServices();
+  try { afterConnect(s, await svc(`/${s.id}/connect`, { method: 'POST' })); }
+  catch (e) { sv.error = `${s.name}: ${e.message}`; }
+  sv.busy = null;
+  await loadServices();
+}
+
+async function disconnectService(s) {
+  if (!confirm(`Отключить «${s.name}»? Помощник больше не сможет им пользоваться, пока вы не подключите снова.`)) return;
+  sv.busy = s.id; sv.error = ''; renderServices();
+  try { await svc(`/${s.id}/disconnect`, { method: 'POST' }); toast(`«${s.name}» отключён`); }
+  catch (e) { sv.error = `${s.name}: ${e.message}`; }
+  sv.busy = null;
+  await loadServices();
+}
+
+async function disconnectMail() {
+  if (!confirm('Отключить рабочую почту? Помощник больше не сможет читать и отправлять письма.')) return;
+  try { await svc('/mail', { method: 'DELETE' }); toast('Почта отключена'); }
+  catch (e) { sv.error = e.message; }
+  await loadServices();
+}
+
+// Вход в сервис: страница входа уже открыта в облачном браузере — показываем экран и ждём, пока человек войдёт
+function endSignin() {
+  clearInterval(signin?.timer);
+  signin = null;
+  $('signin-banner').hidden = true;
+  $('screen-hint').hidden = false;
+}
+
+function startSignin(s, r) {
+  if (signin) endSignin();
+  const cur = { name: s.name, integrationID: r.integrationID, attemptID: r.attemptID };
+  signin = cur;
+  closeServices();
+  openPanel('screen');
+  $('signin-text').textContent = `Войдите в «${s.name}» на этом экране и разрешите доступ. Когда закончите, сервис подключится сам.`;
+  $('signin-banner').hidden = false;
+  $('screen-hint').hidden = true;
+  cur.timer = setInterval(async () => {
+    try {
+      const { status } = await svc(`/attempt/${cur.integrationID}/${cur.attemptID}`);
+      if (signin !== cur) return;
+      if (status === 'complete') { endSignin(); toast(`«${cur.name}» подключён`); }
+      else if (status === 'failed' || status === 'expired') { endSignin(); toast(`Не получилось войти в «${cur.name}». Попробуйте ещё раз в «Сервисах».`); }
+    } catch { /* попробуем на следующем круге */ }
+  }, 2500);
+}
+
+function cancelSignin() {
+  const cur = signin;
+  if (!cur) return;
+  endSignin();
+  svc(`/attempt/${cur.integrationID}/${cur.attemptID}`, { method: 'DELETE' }).catch(() => {});
+}
+
 // ─── Панель и боковая колонка ───────────────────────────────────────────────
 function syncPanel() {
   const { open, tab } = state.panel;
@@ -712,6 +910,13 @@ function initStatic() {
   $('send-btn').innerHTML = icon('send', 18);
   $('panel-close').innerHTML = icon('x', 18);
   $('upload-btn').innerHTML = `${icon('upload', 14)}Загрузить`;
+  $('services-btn').innerHTML = `${icon('grid', 16)}<span>Сервисы</span>`;
+  $('services-close').innerHTML = icon('x', 20);
+  $('services-btn').addEventListener('click', openServices);
+  $('services-close').addEventListener('click', closeServices);
+  $('services-modal').addEventListener('mousedown', (e) => { if (e.target === e.currentTarget) closeServices(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('services-modal').hidden) closeServices(); });
+  $('signin-cancel').addEventListener('click', cancelSignin);
 
   $('menu-btn').addEventListener('click', toggleSidebar);
   $('backdrop').addEventListener('click', closeSidebar);

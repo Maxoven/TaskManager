@@ -14,11 +14,17 @@ const httpProxy = require('http-proxy');
 const config = require('./config');
 const containers = require('./containers');
 const { startLlmProxy } = require('./llm');
+const services = require('./services');
 
 const COOKIE = 'aip_session';
 const SESSION_DAYS = 30;
 const PUBLIC = path.join(__dirname, '..', 'public');
 const WORKSPACE = '/home/user/workspace';
+
+// Страницы отдаём с номером версии в адресах скриптов и стилей: после выкладки браузер сразу берёт новые файлы
+const VERSION = Date.now().toString(36);
+const page = (name) => require('fs').readFileSync(path.join(PUBLIC, name), 'utf8').replaceAll('__V__', VERSION);
+const PAGES = { login: page('login.html'), portal: page('portal.html') };
 
 // ─── Сессия ────────────────────────────────────────────────────────────────
 function readSession(cookieHeader) {
@@ -141,13 +147,14 @@ app.get('/sw.js', (req, res) => {
 
 app.get('/login', (req, res) => {
   if (readSession(req.headers.cookie)) return res.redirect('/');
-  res.sendFile(path.join(PUBLIC, 'login.html'));
+  res.setHeader('Cache-Control', 'no-store');
+  res.type('html').send(PAGES.login);
 });
 
 app.get('/', (req, res) => {
   if (!readSession(req.headers.cookie)) return res.redirect('/login');
   res.setHeader('Cache-Control', 'no-store');
-  res.sendFile(path.join(PUBLIC, 'portal.html'));
+  res.type('html').send(PAGES.portal);
 });
 
 app.post('/api/login', json, async (req, res) => {
@@ -237,6 +244,86 @@ app.post('/api/files/upload', requireSession, async (req, res) => {
     res.status(500).json({ error: 'Не получилось сохранить файл' });
   }
 });
+
+// ─── Сервисы ────────────────────────────────────────────────────────────────
+async function withSandbox(req, res, fn) {
+  try {
+    const ep = await containers.endpoint(req.session.uid);
+    if (!ep) return res.status(409).json({ state: 'asleep', error: 'Помощник спит' });
+    containers.touch(req.session.uid);
+    res.json(await fn(ep));
+  } catch (e) {
+    if (e instanceof services.ServiceError) return res.status(e.status).json({ error: e.message });
+    console.error('[services]', req.path, e);
+    res.status(500).json({ error: 'Не получилось. Попробуйте ещё раз.' });
+  }
+}
+
+const TRANSLIT = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o',
+  п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'c', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya' };
+const slug = (name) => String(name).toLowerCase().replace(/[а-яё]/g, c => TRANSLIT[c] ?? '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
+
+app.get('/api/services', requireSession, (req, res) => withSandbox(req, res, async (ep) => {
+  const [list, mail] = await Promise.all([
+    services.list(req.session.uid, ep),
+    taskmanager('/auth/mail', { token: req.session.tm }).catch(() => null)
+  ]);
+  return {
+    // Почту показываем, только если её вообще можно подключить (корпоративный адрес)
+    mail: mail?.status === 200 && ['ok', 'none'].includes(mail.data?.mail) ? { state: mail.data.mail, email: mail.data.email } : null,
+    services: list
+  };
+}));
+
+app.post('/api/services/mail', requireSession, json, async (req, res) => {
+  try {
+    const r = await taskmanager('/auth/mail', { method: 'POST', token: req.session.tm, body: { password: String(req.body?.password || '') }, ip: clientIp(req) });
+    if (r.status !== 200) return res.status(r.status === 401 ? 401 : 400).json({ error: r.data?.error || 'Не получилось подключить почту' });
+    const ep = await containers.endpoint(req.session.uid);
+    if (ep) await services.refreshTaskmanager(ep);
+    res.json({ state: 'ok' });
+  } catch (e) {
+    console.error('[mail]', e.message);
+    res.status(502).json({ error: 'Task Manager сейчас недоступен, попробуйте позже' });
+  }
+});
+
+app.delete('/api/services/mail', requireSession, async (req, res) => {
+  try {
+    await taskmanager('/auth/mail', { method: 'DELETE', token: req.session.tm });
+    const ep = await containers.endpoint(req.session.uid);
+    if (ep) await services.refreshTaskmanager(ep);
+    res.json({ state: 'none' });
+  } catch (e) {
+    res.status(502).json({ error: 'Task Manager сейчас недоступен, попробуйте позже' });
+  }
+});
+
+app.post('/api/services/custom', requireSession, json, (req, res) => withSandbox(req, res, (ep) => {
+  const name = String(req.body?.name || '').trim();
+  const id = slug(name);
+  if (!name || id.length < 2) throw new services.ServiceError('Напишите название сервиса (буквами или цифрами).');
+  return services.connect(req.session.uid, ep, id, { name, url: String(req.body?.url || '').trim(), key: String(req.body?.key || '').trim() });
+}));
+
+app.post('/api/services/:id/connect', requireSession, (req, res) => withSandbox(req, res, (ep) => {
+  if (!services.ID_RE.test(req.params.id)) throw new services.ServiceError('Сервис не найден.', 404);
+  return services.connect(req.session.uid, ep, req.params.id);
+}));
+
+app.post('/api/services/:id/disconnect', requireSession, (req, res) => withSandbox(req, res, (ep) =>
+  services.disconnect(req.session.uid, ep, req.params.id)));
+
+const ATTEMPT = /^[A-Za-z0-9_-]{4,80}$/;
+app.get('/api/services/attempt/:integrationID/:attemptID', requireSession, (req, res) => withSandbox(req, res, (ep) => {
+  if (!ATTEMPT.test(req.params.integrationID) || !ATTEMPT.test(req.params.attemptID)) throw new services.ServiceError('Не найдено', 404);
+  return services.attemptStatus(ep, req.params.integrationID, req.params.attemptID);
+}));
+app.delete('/api/services/attempt/:integrationID/:attemptID', requireSession, (req, res) => withSandbox(req, res, async (ep) => {
+  if (!ATTEMPT.test(req.params.integrationID) || !ATTEMPT.test(req.params.attemptID)) throw new services.ServiceError('Не найдено', 404);
+  await services.cancelAttempt(ep, req.params.integrationID, req.params.attemptID);
+  return { ok: true };
+}));
 
 app.use('/api/oc', requireSession, async (req, res) => {
   if (!OC_ALLOWED.some(([method, re]) => method === req.method && re.test(req.path))) {

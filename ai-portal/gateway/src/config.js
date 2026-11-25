@@ -13,6 +13,8 @@ module.exports = {
   publicUrl: process.env.PUBLIC_URL || 'https://ai.ecoestate.tv',
   sessionSecret: required('SESSION_SECRET'),
   taskmanagerApi: process.env.TASKMANAGER_API || 'http://127.0.0.1:3001/api',
+  // OAuth-клиент Google (тип «Desktop app») для Gmail, Календаря и Диска. Пока не задан — эти сервисы показаны как «скоро».
+  google: { clientId: process.env.GOOGLE_OAUTH_CLIENT_ID || '', clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '' },
   maxUploadMb: num(process.env.MAX_UPLOAD_MB, 100),
   taskmanagerEnvFile: process.env.TASKMANAGER_ENV || '/var/www/taskmanager/backend/.env',
   taskmanagerUrl: process.env.TASKMANAGER_URL || 'https://taskmanager.ecoestate.tv',

@@ -10,8 +10,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/tokens.css">
-  <link rel="stylesheet" href="/static/portal.css">
+  <link rel="stylesheet" href="/static/tokens.css?v=__V__">
+  <link rel="stylesheet" href="/static/portal.css?v=__V__">
 </head>
 <body>
   <div class="app">
@@ -25,6 +25,7 @@
         <div class="app-header-right">
           <button class="header-toggle" id="toggle-screen" type="button" aria-pressed="false"></button>
           <button class="header-toggle" id="toggle-files" type="button" aria-pressed="false"></button>
+          <button class="header-toggle" id="services-btn" type="button"></button>
           <span class="user-chip" id="user-chip" hidden><span class="avatar" id="avatar"></span><span class="user-chip-name" id="user-name"></span></span>
           <button class="btn-ghost btn-logout" id="logout-btn" type="button"></button>
         </div>
@@ -67,7 +68,11 @@
           <button class="btn-icon" id="panel-close" type="button" aria-label="Закрыть панель"></button>
         </div>
         <div class="panel-body" id="body-screen">
-          <p class="panel-hint">Здесь видно, как помощник работает на сайтах. Можно кликать и печатать самому — например, ввести пароль.</p>
+          <p class="panel-hint" id="screen-hint">Здесь видно, как помощник работает на сайтах. Можно кликать и печатать самому — например, ввести пароль.</p>
+          <div class="signin-banner" id="signin-banner" hidden>
+            <span id="signin-text"></span>
+            <button class="btn-small" id="signin-cancel" type="button">Отмена</button>
+          </div>
           <div class="screen">
             <div class="screen-view" id="screen-view"></div>
             <div class="screen-status" id="screen-status"><span class="spinner" aria-hidden="true"></span><span>Подключаем экран…</span></div>
@@ -85,6 +90,17 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="services-modal" hidden>
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="services-title">
+      <div class="modal-header">
+        <h2 id="services-title">Сервисы</h2>
+        <button class="close-btn" id="services-close" type="button" aria-label="Закрыть"></button>
+      </div>
+      <p class="modal-description">С чем помощник умеет работать от вашего имени. Подключённым сервисом он пользуется сам, когда вы просите.</p>
+      <div id="services-body"></div>
+    </div>
+  </div>
+
   <div class="cover" id="cover">
     <span class="spinner" aria-hidden="true"></span>
     <h2 id="cover-title">Готовим всё к работе…</h2>
@@ -92,6 +108,6 @@
     <button class="btn-primary" id="cover-retry" type="button" hidden>Попробовать ещё раз</button>
   </div>
 
-  <script type="module" src="/static/portal.js"></script>
+  <script type="module" src="/static/portal.js?v=__V__"></script>
 </body>
 </html>

@@ -138,6 +138,20 @@ async function endpoint(userId) {
   return ep;
 }
 
+// Выполнить команду в среде человека от его имени (не root). Возвращает код выхода и вывод.
+async function exec(userId, cmd) {
+  const e = await docker.getContainer(nameFor(userId)).exec({ Cmd: cmd, User: 'user', AttachStdout: true, AttachStderr: true });
+  const stream = await e.start({});
+  const out = [], err = [];
+  await new Promise((resolve, reject) => {
+    docker.modem.demuxStream(stream, { write: (c) => out.push(c) }, { write: (c) => err.push(c) });
+    stream.on('end', resolve);
+    stream.on('error', reject);
+  });
+  const info = await e.inspect();
+  return { code: info.ExitCode, stdout: Buffer.concat(out).toString('utf8'), stderr: Buffer.concat(err).toString('utf8') };
+}
+
 async function stop(userId) {
   const id = Number(userId);
   cache.delete(id);
@@ -169,4 +183,4 @@ function startReaper() {
   }, 60000).unref();
 }
 
-module.exports = { ensureRunning, endpoint, stop, status, touch, listRunning, startReaper };
+module.exports = { ensureRunning, endpoint, exec, stop, status, touch, listRunning, startReaper };
