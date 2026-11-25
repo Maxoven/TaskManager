@@ -50,6 +50,11 @@
             <div class="composer-row">
               <button class="composer-attach" id="attach-btn" type="button" aria-label="Прикрепить файл" title="Прикрепить файл"></button>
               <textarea id="input" rows="1" placeholder="Напишите задачу обычными словами…" aria-label="Сообщение помощнику"></textarea>
+              <button class="composer-mic" id="mic-btn" type="button" aria-label="Надиктовать" title="Надиктовать" aria-pressed="false" hidden></button>
+              <div class="model-picker">
+                <button class="model-btn" id="model-btn" type="button" aria-haspopup="menu" aria-expanded="false" title="Какая модель отвечает"></button>
+                <div class="model-menu" id="model-menu" role="menu" hidden></div>
+              </div>
               <button class="btn-secondary composer-stop" id="stop-btn" type="button" hidden>Остановить</button>
               <button class="btn-primary composer-send" id="send-btn" type="submit" aria-label="Отправить" title="Отправить"></button>
             </div>

@@ -24,6 +24,8 @@ const ICONS = {
   logout: '<path d="M10 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2H10M15 8l4 4-4 4M19 12H9.5"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   alert: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.2v.2"/>',
+  mic: '<rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/>',
+  chevron: '<path d="M6 9l6 6 6-6"/>',
   grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>'
 };
 const icon = (name, size = 16) =>
@@ -41,6 +43,18 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
+// ─── Модели ─────────────────────────────────────────────────────────────────
+// Человек выбирает, кто отвечает ему в разговоре. Подручные помощника всегда работают на DeepSeek.
+const MODELS = [
+  { key: 'glm', id: 'glm-5.3', providerID: 'portal-glm', name: 'GLM-5.3', short: 'GLM', hint: 'Умнее. Для сложных задач и документов' },
+  { key: 'deepseek', id: 'deepseek-flash', providerID: 'portal-deepseek', name: 'DeepSeek Flash', short: 'DeepSeek', hint: 'Быстрее. Для простых вопросов' }
+];
+const modelByKey = (key) => MODELS.find(m => m.key === key) || MODELS[0];
+const modelOfSession = (s) => MODELS.find(m => m.id === s?.model?.id && m.providerID === s?.model?.providerID);
+function savedModel() {
+  try { return modelByKey(localStorage.getItem('aip_model')).key; } catch { return MODELS[0].key; }
+}
+
 // ─── Состояние ──────────────────────────────────────────────────────────────
 const state = {
   me: null,
@@ -56,7 +70,8 @@ const state = {
   attachments: [],
   expanded: new Set(),
   panel: { open: false, tab: 'screen', autoOpened: false },
-  filesDir: ''
+  filesDir: '',
+  model: savedModel()      // выбранная модель; у открытого разговора — та, что в нём
 };
 
 // ─── Запросы ────────────────────────────────────────────────────────────────
@@ -210,6 +225,8 @@ function resetTurn() {
 
 function newChat() {
   state.currentId = null; state.busy = false;
+  state.model = savedModel();
+  renderModel();
   resetTurn();
   renderSessions(); render(); closeSidebar();
   $('input').focus();
@@ -217,6 +234,8 @@ function newChat() {
 
 async function openSession(id) {
   state.currentId = id; state.busy = false;
+  state.model = (modelOfSession(state.sessions.find(x => x.id === id)) || modelByKey(savedModel())).key;
+  renderModel();
   resetTurn();
   renderSessions(); closeSidebar();
   $('feed-inner').replaceChildren(el('div', { className: 'working' }, el('span', { className: 'spinner' }), el('span', { textContent: 'Открываем разговор…' })));
@@ -418,6 +437,90 @@ function setBusy(on, status) {
   if (!on) { state.status = ''; state.panel.autoOpened = false; }
 }
 
+// ─── Выбор модели ───────────────────────────────────────────────────────────
+function renderModel() {
+  const current = modelByKey(state.model);
+  $('model-btn').innerHTML = `<span>${current.short}<span class="model-name-long">${current.name.slice(current.short.length)}</span></span>${icon('chevron', 14)}`;
+  $('model-btn').setAttribute('aria-label', `Модель: ${current.name}. Сменить`);
+  $('model-menu').replaceChildren(
+    el('div', { className: 'model-menu-label', textContent: 'Кто отвечает' }),
+    ...MODELS.map(m => el('button', {
+      className: 'model-option', type: 'button', html: icon('check', 16),
+      attrs: { role: 'menuitemradio', 'aria-checked': String(m.key === current.key) },
+      on: { click: () => chooseModel(m.key) }
+    }, el('span', { className: 'model-option-text' },
+      el('span', { className: 'model-option-name', textContent: m.name }),
+      el('span', { className: 'model-option-hint', textContent: m.hint })))));
+}
+
+function toggleModelMenu(open) {
+  const menu = $('model-menu');
+  const show = open ?? menu.hidden;
+  menu.hidden = !show;
+  $('model-btn').setAttribute('aria-expanded', String(show));
+}
+
+function chooseModel(key) {
+  state.model = key;
+  try { localStorage.setItem('aip_model', key); } catch { /* приватный режим */ }
+  renderModel();
+  toggleModelMenu(false);
+  $('input').focus();
+}
+
+// ─── Голосовой ввод ─────────────────────────────────────────────────────────
+// Речь в текст переводит сам браузер (Chrome, Edge, Safari); звук на наш сервер не передаётся.
+// В браузерах без этой возможности (Firefox) кнопки нет.
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+
+function stopDictation() {
+  const rec = recognition;
+  recognition = null;
+  try { rec?.stop(); } catch { /* уже остановлен */ }
+  $('mic-btn').setAttribute('aria-pressed', 'false');
+  $('mic-btn').title = 'Надиктовать';
+  $('input').placeholder = 'Напишите задачу обычными словами…';
+}
+
+function startDictation() {
+  const input = $('input');
+  const before = input.value.trim() ? `${input.value.trim()} ` : '';
+  let finalText = '';
+  const rec = new Recognition();
+  rec.lang = 'ru-RU';
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.onresult = (event) => {
+    let interim = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const piece = event.results[i][0].transcript;
+      if (event.results[i].isFinal) finalText += piece; else interim += piece;
+    }
+    input.value = (before + finalText + interim).replace(/\s+/g, ' ').trimStart();
+    autosize();
+    input.scrollTop = input.scrollHeight;
+  };
+  rec.onerror = (event) => {
+    if (event.error === 'no-speech' || event.error === 'aborted') return;
+    toast(event.error === 'not-allowed' || event.error === 'service-not-allowed'
+      ? 'Браузер не дал доступ к микрофону. Разрешите его в настройках сайта (значок слева от адреса).'
+      : event.error === 'audio-capture' ? 'Микрофон не найден.'
+      : 'Не получилось распознать речь. Попробуйте ещё раз.');
+  };
+  // Браузер сам обрывает запись после паузы — тогда просто выключаем кнопку, текст остаётся в поле
+  rec.onend = () => { if (recognition === rec) stopDictation(); input.focus(); };
+  try {
+    rec.start();
+  } catch {
+    return toast('Не получилось включить микрофон. Попробуйте ещё раз.');
+  }
+  recognition = rec;
+  $('mic-btn').setAttribute('aria-pressed', 'true');
+  $('mic-btn').title = 'Остановить запись';
+  input.placeholder = 'Говорите…';
+}
+
 // ─── Отправка ───────────────────────────────────────────────────────────────
 function autosize() {
   const input = $('input');
@@ -426,6 +529,7 @@ function autosize() {
 }
 
 async function send(text) {
+  if (recognition) stopDictation();
   text = String(text || '').trim();
   if (state.busy || (!text && !state.attachments.length)) return;
   const files = state.attachments.slice();
@@ -438,10 +542,19 @@ async function send(text) {
   setBusy(true, 'Помощник думает…');
   render(true);
   try {
+    const model = modelByKey(state.model);
+    const wanted = { id: model.id, providerID: model.providerID };
     if (!state.currentId) {
-      const session = await oc('/session', { method: 'POST', body: { location: { directory: WORKSPACE } } });
+      const session = await oc('/session', { method: 'POST', body: { location: { directory: WORKSPACE }, model: wanted } });
       state.currentId = session.id;
       loadSessions();
+    } else {
+      // Модель сменили посреди разговора — переключаем его перед отправкой
+      const session = state.sessions.find(x => x.id === state.currentId);
+      if (session && modelOfSession(session)?.key !== model.key) {
+        await oc(`/session/${state.currentId}/model`, { method: 'POST', body: { model: wanted } });
+        session.model = wanted;
+      }
     }
     await oc(`/session/${state.currentId}/prompt`, { method: 'POST', body: { text: full } });
     scheduleRefetch(600);
@@ -928,6 +1041,16 @@ function initStatic() {
   $('panel-close').addEventListener('click', closePanel);
   $('logout-btn').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); toLogin(); });
   $('stop-btn').addEventListener('click', stop);
+
+  if (Recognition) {
+    $('mic-btn').innerHTML = icon('mic', 20);
+    $('mic-btn').hidden = false;
+    $('mic-btn').addEventListener('click', () => (recognition ? stopDictation() : startDictation()));
+  }
+  renderModel();
+  $('model-btn').addEventListener('click', () => toggleModelMenu());
+  document.addEventListener('mousedown', (e) => { if (!$('model-menu').hidden && !e.target.closest('.model-picker')) toggleModelMenu(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('model-menu').hidden) { toggleModelMenu(false); $('model-btn').focus(); } });
 
   const input = $('input');
   input.addEventListener('input', autosize);

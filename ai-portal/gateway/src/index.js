@@ -98,6 +98,7 @@ const OC_ALLOWED = [
   ['GET', new RegExp(`^/session/${ID}/message$`)],
   ['POST', new RegExp(`^/session/${ID}/prompt$`)],
   ['POST', new RegExp(`^/session/${ID}/interrupt$`)],
+  ['POST', new RegExp(`^/session/${ID}/model$`)],
   ['GET', new RegExp(`^/session/${ID}/permission$`)],
   ['POST', new RegExp(`^/session/${ID}/permission/${ID}/reply$`)],
   ['GET', new RegExp('^/event$')],

@@ -171,7 +171,9 @@ function startReaper() {
       const now = Date.now();
       for (const id of await listRunning()) {
         if (!lastActivity.has(id)) { touch(id); continue; } // шлюз перезапускался — даём отсрочку
-        if (now - lastActivity.get(id) > S.idleMinutes * 60000) {
+        // Среду могли запустить заново уже после последней отметки — простой считаем не раньше её запуска
+        const startedAt = Date.parse((await inspect(id))?.State?.StartedAt || '') || 0;
+        if (now - Math.max(lastActivity.get(id), startedAt) > S.idleMinutes * 60000) {
           console.log(`[reaper] u${id}: простой ${S.idleMinutes} мин — останавливаю`);
           await stop(id);
           lastActivity.delete(id);
