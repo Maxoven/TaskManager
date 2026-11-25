@@ -1,0 +1,112 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "providers": {
+    "portal-glm": {
+      "name": "GLM",
+      "canonical": "zai",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "http://172.30.0.1:3210/zai/v1",
+        "apiKey": "{env:AIPORTAL_TOKEN}",
+        "chunkTimeout": 1800000
+      },
+      "models": {
+        "glm-5.3": {
+          "name": "GLM-5.3"
+        }
+      }
+    },
+    "portal-deepseek": {
+      "name": "DeepSeek",
+      "canonical": "deepseek",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "http://172.30.0.1:3210/deepseek/v1",
+        "apiKey": "{env:AIPORTAL_TOKEN}",
+        "chunkTimeout": 1800000
+      },
+      "models": {
+        "deepseek-flash": {
+          "name": "DeepSeek V4.1 Flash"
+        }
+      }
+    }
+  },
+  "policies": [
+    {
+      "action": "provider.use",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "provider.use",
+      "resource": "portal-*",
+      "effect": "allow"
+    }
+  ],
+  "model": "portal-glm/glm-5.3",
+  "default_agent": "build",
+  "agents": {
+    "general": {
+      "model": "portal-deepseek/deepseek-flash"
+    },
+    "explore": {
+      "model": "portal-deepseek/deepseek-flash"
+    },
+    "browser": {
+      "description": "Works in the cloud browser the user can watch: opens sites, clicks, fills forms, reads pages, signs in where the user has already logged in. Give it a concrete goal and what to report back.",
+      "mode": "subagent",
+      "model": "portal-deepseek/deepseek-flash"
+    },
+    "verifier": {
+      "description": "Independently checks finished work: runs tests and scripts, reproduces the result, looks for bugs and missed requirements. Read-mostly; reports problems instead of rewriting.",
+      "mode": "subagent",
+      "model": "portal-deepseek/deepseek-flash"
+    }
+  },
+  "instructions": [
+    "/etc/opencode/ultra-code.md"
+  ],
+  "experimental": {
+    "todo": true,
+    "subagent_depth": 2
+  },
+  "update": "disable",
+  "mcp": {
+    "servers": {
+      "browser": {
+        "type": "local",
+        "command": [
+          "playwright-mcp",
+          "--cdp-endpoint",
+          "http://127.0.0.1:9222",
+          "--image-responses",
+          "omit",
+          "--output-dir",
+          "/tmp/browser"
+        ],
+        "cwd": "~"
+      },
+      "taskmanager": {
+        "type": "remote",
+        "url": "http://172.30.0.1:3210/mcp/taskmanager",
+        "oauth": false,
+        "headers": {
+          "Authorization": "Bearer {env:AIPORTAL_TOKEN}"
+        }
+      }
+    }
+  },
+  "permissions": [
+    {
+      "action": "*",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "question",
+      "resource": "*",
+      "effect": "deny"
+    }
+  ]
+}

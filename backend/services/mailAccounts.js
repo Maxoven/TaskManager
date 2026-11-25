@@ -149,6 +149,25 @@ async function linkOnLogin(userId, email, password) {
   return result;
 }
 
+// Подключение почты по просьбе самого человека (AI-портал, «Сервисы»): пароль от почты он вводит явно.
+// В отличие от linkOnLogin, неверный пароль не удаляет уже работающее подключение.
+async function connect(userId, email, password) {
+  if (!isEnabled()) return { status: 'disabled' };
+  const servers = await serversFor(email);
+  if (!servers) return { status: 'not_supported' };
+  const account = { email, password, ...servers };
+  const result = await checkLogin(account);
+  if (result.status === 'ok') await saveAccount(userId, account);
+  return result;
+}
+
+// Что с почтой у человека: 'ok' — подключена, 'none' — можно подключить, 'not_supported' — почта не на one.com, 'disabled'
+async function status(userId, email) {
+  if (!isEnabled()) return 'disabled';
+  if (await hasAccount(userId)) return 'ok';
+  return (await serversFor(email)) ? 'none' : 'not_supported';
+}
+
 async function getAccount(userId) {
   if (!isEnabled()) return null;
   const { rows } = await pool.query('SELECT * FROM mail_accounts WHERE user_id = $1', [userId]);
@@ -181,6 +200,6 @@ async function markError(userId, message) {
 }
 
 module.exports = {
-  isEnabled, serversFor, linkOnLogin, getAccount, hasAccount, deleteAccount, markError, imapClient,
+  isEnabled, serversFor, linkOnLogin, connect, status, getAccount, hasAccount, deleteAccount, markError, imapClient,
   encrypt, decrypt
 };

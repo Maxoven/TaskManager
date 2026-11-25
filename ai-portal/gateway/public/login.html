@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#25b84c">
+  <title>Вход — Помощник</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/portal.css">
+</head>
+<body>
+  <div class="auth-container">
+    <main class="auth-box">
+      <div class="auth-top">
+        <span class="logo">
+          <span class="logo-mark"><svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4l1.6 4.4L16 10l-4.4 1.6L10 16l-1.6-4.4L4 10l4.4-1.6z"/><path d="M18 14l.8 2.2L21 17l-2.2.8L18 20l-.8-2.2L15 17l2.2-.8z"/></svg></span>
+          <span class="logo-text">Помощник</span>
+        </span>
+      </div>
+      <h1>Вход</h1>
+      <p class="auth-intro">Войдите с тем же email и паролем, что в Task Manager.</p>
+      <form id="form" novalidate>
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="username" required autofocus>
+        </div>
+        <div class="form-group">
+          <label for="password">Пароль</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <div class="error" id="error" role="alert" hidden></div>
+        <button class="btn-primary" id="submit" type="submit">Войти</button>
+      </form>
+      <p class="auth-link">Нет аккаунта или забыли пароль? <a href="https://taskmanager.ecoestate.tv/login">Откройте Task Manager</a></p>
+    </main>
+  </div>
+  <script src="/static/login.js"></script>
+</body>
+</html>

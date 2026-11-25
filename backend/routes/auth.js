@@ -11,6 +11,7 @@ const {
   sendRegistrationRequest, sendRegistrationApproved, sendRegistrationRejected
 } = require('../services/email');
 const rateLimit = require('../middleware/rateLimit');
+const mailAccounts = require('../services/mailAccounts');
 
 const router = express.Router();
 
@@ -173,8 +174,23 @@ router.post('/login', authLimiter, async (req, res) => {
       user.language = req.lang;
     }
 
+    // AI-портал просит заодно подключить корпоративную почту (как страница входа MCP): пароль уже проверен,
+    // на почтовый сервер он уходит только для доменов на one.com. Ошибки почты вход не ломают.
+    let mail;
+    if (req.body.linkMail === true) {
+      const separate = typeof req.body.mailPassword === 'string' && req.body.mailPassword;
+      try {
+        // Уже подключённую почту не трогаем: её могли подключить с отдельным паролем, а неудачная
+        // проверка паролем таскменеджера удалила бы это подключение. Перепроверяем, только если пароль от почты ввели явно.
+        if (!separate && await mailAccounts.hasAccount(user.id)) mail = 'ok';
+        else mail = (await mailAccounts.linkOnLogin(user.id, user.email.toLowerCase(), separate || password)).status;
+      } catch (error) {
+        console.error('Не удалось подключить почту при входе:', error.message);
+      }
+    }
+
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '30d' });
-    res.json({ user: publicUser(user), token });
+    res.json({ user: publicUser(user), token, ...(mail ? { mail } : {}) });
   } catch (error) {
     console.error('Ошибка входа:', error);
     res.status(500).json({ error: req.t('loginError') });
@@ -187,6 +203,44 @@ router.get('/me', authMiddleware, async (req, res) => {
     const { rows: [user] } = await pool.query('SELECT id, email, name, language, avatar FROM users WHERE id = $1', [req.userId]);
     if (!user) return res.status(401).json({ error: req.t('invalidToken') });
     res.json(publicUser(user));
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: req.t('serverError') });
+  }
+});
+
+// Корпоративная почта для ИИ-помощника (AI-портал): подключена ли и подключение своим паролем от почты
+router.get('/mail', authMiddleware, async (req, res) => {
+  try {
+    const { rows: [user] } = await pool.query('SELECT email FROM users WHERE id = $1', [req.userId]);
+    if (!user) return res.status(401).json({ error: req.t('invalidToken') });
+    res.json({ email: user.email, mail: await mailAccounts.status(req.userId, user.email.toLowerCase()) });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: req.t('serverError') });
+  }
+});
+
+router.post('/mail', authLimiter, authMiddleware, async (req, res) => {
+  try {
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
+    if (!password) return res.status(400).json({ error: req.t('mailPasswordRequired') });
+    const { rows: [user] } = await pool.query('SELECT email FROM users WHERE id = $1', [req.userId]);
+    if (!user) return res.status(401).json({ error: req.t('invalidToken') });
+    const result = await mailAccounts.connect(req.userId, user.email.toLowerCase(), password);
+    if (result.status === 'ok') return res.json({ mail: 'ok' });
+    const key = { auth_failed: 'mailPasswordWrong', not_supported: 'mailNotSupported', disabled: 'mailNotSupported' }[result.status] || 'mailUnavailable';
+    res.status(result.status === 'unavailable' ? 502 : 400).json({ mail: result.status, error: req.t(key) });
+  } catch (error) {
+    console.error('Ошибка подключения почты:', error.message);
+    res.status(500).json({ error: req.t('serverError') });
+  }
+});
+
+router.delete('/mail', authMiddleware, async (req, res) => {
+  try {
+    await mailAccounts.deleteAccount(req.userId);
+    res.json({ mail: 'none' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: req.t('serverError') });

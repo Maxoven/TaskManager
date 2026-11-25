@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#25b84c">
+  <title>Помощник</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/portal.css">
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <div class="app-header-inner">
+        <button class="btn-icon menu-btn" id="menu-btn" type="button" aria-label="Разговоры"></button>
+        <span class="logo">
+          <span class="logo-mark" id="logo-mark"></span>
+          <span class="logo-text">Помощник</span>
+        </span>
+        <div class="app-header-right">
+          <button class="header-toggle" id="toggle-screen" type="button" aria-pressed="false"></button>
+          <button class="header-toggle" id="toggle-files" type="button" aria-pressed="false"></button>
+          <span class="user-chip" id="user-chip" hidden><span class="avatar" id="avatar"></span><span class="user-chip-name" id="user-name"></span></span>
+          <button class="btn-ghost btn-logout" id="logout-btn" type="button"></button>
+        </div>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar" id="sidebar" aria-label="Разговоры">
+        <div class="sidebar-top">
+          <button class="btn-primary" id="new-chat" type="button"></button>
+        </div>
+        <div class="sidebar-label">Прошлые разговоры</div>
+        <ul class="chat-list" id="chat-list"></ul>
+      </aside>
+      <div class="backdrop" id="backdrop"></div>
+
+      <main class="chat">
+        <div class="feed" id="feed"><div class="feed-inner" id="feed-inner"></div></div>
+        <div class="composer-wrap">
+          <form class="composer" id="composer">
+            <div class="composer-files file-chips" id="composer-files" hidden></div>
+            <div class="composer-row">
+              <button class="composer-attach" id="attach-btn" type="button" aria-label="Прикрепить файл" title="Прикрепить файл"></button>
+              <textarea id="input" rows="1" placeholder="Напишите задачу обычными словами…" aria-label="Сообщение помощнику"></textarea>
+              <button class="btn-secondary composer-stop" id="stop-btn" type="button" hidden>Остановить</button>
+              <button class="btn-primary composer-send" id="send-btn" type="submit" aria-label="Отправить" title="Отправить"></button>
+            </div>
+            <input id="attach-input" type="file" multiple hidden>
+          </form>
+          <p class="composer-note">Помощник может ошибаться. Перед отправкой писем и удалением он спросит вас.</p>
+        </div>
+      </main>
+
+      <aside class="panel" id="panel" hidden aria-label="Экран помощника и файлы">
+        <div class="panel-head">
+          <div class="segmented" role="tablist">
+            <button class="segmented-btn" role="tab" id="tab-screen" type="button" aria-selected="true">Экран помощника</button>
+            <button class="segmented-btn" role="tab" id="tab-files" type="button" aria-selected="false">Файлы</button>
+          </div>
+          <button class="btn-icon" id="panel-close" type="button" aria-label="Закрыть панель"></button>
+        </div>
+        <div class="panel-body" id="body-screen">
+          <p class="panel-hint">Здесь видно, как помощник работает на сайтах. Можно кликать и печатать самому — например, ввести пароль.</p>
+          <div class="screen">
+            <div class="screen-view" id="screen-view"></div>
+            <div class="screen-status" id="screen-status"><span class="spinner" aria-hidden="true"></span><span>Подключаем экран…</span></div>
+          </div>
+        </div>
+        <div class="panel-body" id="body-files" hidden>
+          <div class="files-bar">
+            <nav class="crumbs" id="crumbs" aria-label="Папка"></nav>
+            <button class="btn-small" id="upload-btn" type="button"></button>
+            <input id="upload-input" type="file" multiple hidden>
+          </div>
+          <div class="file-list" id="file-list"></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="cover" id="cover">
+    <span class="spinner" aria-hidden="true"></span>
+    <h2 id="cover-title">Готовим всё к работе…</h2>
+    <p id="cover-text">Обычно это занимает до полминуты.</p>
+    <button class="btn-primary" id="cover-retry" type="button" hidden>Попробовать ещё раз</button>
+  </div>
+
+  <script type="module" src="/static/portal.js"></script>
+</body>
+</html>

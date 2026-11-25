@@ -19,3 +19,4 @@ deepseek.txt
 
 # Локальное состояние Cloudflare Wrangler
 .wrangler/
+glm.txt
