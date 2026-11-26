@@ -185,9 +185,14 @@ app.get('/api/me', requireSession, (req, res) => {
   res.json({ user: { name: req.session.name, email: req.session.email }, taskmanagerUrl: config.taskmanagerUrl });
 });
 
-// Подготовить рабочее место (запускается само при входе и после сна). Заодно проверяем, что аккаунт ещё действует.
+// Подготовить рабочее место (при входе и после сна). Заодно проверяем, что аккаунт ещё действует.
+// Будит только действие человека: страница шлёт заголовок X-Portal-Wake. Вкладки со старой версией страницы его не шлют
+// и раньше сами будили уснувшее рабочее место в фоне — им отвечаем просьбой обновить страницу.
 app.post('/api/start', requireSession, async (req, res) => {
   try {
+    if (req.get('X-Portal-Wake') !== 'user' && !(await containers.endpoint(req.session.uid))) {
+      return res.status(409).json({ state: 'reload', error: 'Страница устарела. Обновите её, чтобы продолжить.' });
+    }
     const me = await taskmanager('/auth/me', { token: req.session.tm });
     if (me.status === 401) {
       res.clearCookie(COOKIE, { path: '/' });
@@ -205,9 +210,9 @@ app.post('/api/start', requireSession, async (req, res) => {
   }
 });
 
-// Страница открыта и видна — рабочее место не засыпает
+// Человек что-то делает на странице — рабочее место не засыпает
 app.post('/api/ping', requireSession, (req, res) => {
-  containers.touch(req.session.uid);
+  if (req.get('X-Portal-Wake') === 'user') containers.touch(req.session.uid); // старые вкладки слали это всё время, пока открыты
   res.json({ ok: true });
 });
 

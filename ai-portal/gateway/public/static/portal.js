@@ -72,6 +72,7 @@ const state = {
   expanded: new Set(),
   panel: { open: false, tab: 'screen', autoOpened: false },
   filesDir: '',
+  asleep: false,            // рабочее место уснуло от простоя; разбудит первое действие человека
   model: savedModel()      // выбранная модель; у открытого разговора — та, что в нём
 };
 
@@ -88,10 +89,26 @@ function toast(text) {
 const toLogin = () => { location.href = '/login'; };
 
 async function start() {
-  const r = await fetch('/api/start', { method: 'POST' });
+  // Заголовок говорит шлюзу, что это действие человека: фоновые запросы уснувшее рабочее место не будят
+  const r = await fetch('/api/start', { method: 'POST', headers: { 'X-Portal-Wake': 'user' } });
   if (r.status === 401) { toLogin(); throw new Error('Нужно войти'); }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || 'Не получилось подготовить помощника.');
+}
+
+// ─── Присутствие человека ───────────────────────────────────────────────────
+// Рабочее место засыпает через полчаса простоя и освобождает память. Открытая вкладка сама его не будит и не держит:
+// будит только действие человека (нажатие, клавиша), а «не спать» просим, пока он что-то делает на странице.
+let lastAction = Date.now();  // нажатие или клавиша
+let lastSeen = Date.now();    // любое движение на странице
+let screenPaused = false;     // экран помощника отключён, пока человека нет
+const ACTION_MS = 20000, PRESENT_MS = 5 * 60000;
+const isPresent = () => !document.hidden && Date.now() - lastSeen < PRESENT_MS;
+
+function onAction() {
+  lastAction = lastSeen = Date.now();
+  if (state.asleep) wake().catch((e) => toast(e.message));
+  else if (screenPaused) { screenPaused = false; connectScreen(); }
 }
 
 // Рабочее место уснуло — будим один раз для всех ждущих запросов
@@ -100,9 +117,23 @@ function wake() {
   if (!waking) {
     toast('Продолжаем с того же места…');
     waking = start().finally(() => { waking = null; });
-    waking.then(connectEvents, () => {});
+    waking.then(() => {
+      state.asleep = false; screenPaused = false;
+      connectEvents();
+      if (state.currentId) scheduleRefetch(0);
+      connectScreen();
+    }, () => {});
   }
   return waking;
+}
+
+// Запрос наткнулся на уснувшее рабочее место. Если человек только что что-то сделал — будим; фоновый запрос оставляет его спать.
+function onAsleep() {
+  if (Date.now() - lastAction < ACTION_MS) return wake();
+  state.asleep = true;
+  events?.close();
+  disconnectScreen();
+  return Promise.reject(new Error('Помощник спит'));
 }
 
 async function oc(path, { method = 'GET', body, raw, full } = {}, retried = false) {
@@ -112,7 +143,7 @@ async function oc(path, { method = 'GET', body, raw, full } = {}, retried = fals
     body: body ? (raw ? body : JSON.stringify(body)) : undefined
   });
   if (r.status === 401) { toLogin(); throw new Error('Нужно войти'); }
-  if (r.status === 409 && !retried) { await wake(); return oc(path, { method, body, raw, full }, true); }
+  if (r.status === 409 && !retried) { await onAsleep(); return oc(path, { method, body, raw, full }, true); }
   if (!r.ok) throw new Error(`Ошибка ${r.status}`);
   if (r.status === 204) return null;
   const data = await r.json().catch(() => null);
@@ -588,7 +619,7 @@ function connectEvents() {
   events.onerror = () => {
     events.close();
     setTimeout(async () => {
-      try { await oc('/session/active'); } catch { /* разбудим при следующем запросе */ }
+      try { await oc('/session/active'); } catch { if (state.asleep) return; /* спит — подключимся, когда человек вернётся */ }
       connectEvents();
     }, eventsRetry);
     eventsRetry = Math.min(eventsRetry * 2, 15000);
@@ -666,7 +697,7 @@ function screenStatus(text, spinning = true) {
   if (text) node.replaceChildren(...(spinning ? [el('span', { className: 'spinner' })] : []), el('span', { textContent: text }));
 }
 
-const screenWanted = () => state.panel.open && state.panel.tab === 'screen' && !document.hidden;
+const screenWanted = () => state.panel.open && state.panel.tab === 'screen' && !document.hidden && !screenPaused && !state.asleep;
 
 async function connectScreen() {
   clearTimeout(screenTimer);
@@ -675,7 +706,7 @@ async function connectScreen() {
   try {
     if (!RFB) {
       const probe = await fetch('/screen/core/rfb.js', { method: 'GET' });
-      if (probe.status === 409) await wake();
+      if (probe.status === 409) await onAsleep();
       RFB = (await import('/screen/core/rfb.js')).default;
     }
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -689,6 +720,7 @@ async function connectScreen() {
     });
     rfb = conn;
   } catch {
+    if (state.asleep) return;
     screenStatus('Подключаем экран…');
     screenTimer = setTimeout(connectScreen, 4000);
   }
@@ -782,7 +814,7 @@ async function uploadOne(file, dir, retried = false) {
     method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file
   });
   if (r.status === 401) { toLogin(); throw new Error('Нужно войти'); }
-  if (r.status === 409 && !retried) { await wake(); return uploadOne(file, dir, true); }
+  if (r.status === 409 && !retried) { await onAsleep(); return uploadOne(file, dir, true); }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || 'Не получилось сохранить файл');
   return data.path;
@@ -824,7 +856,7 @@ async function svc(path, { method = 'GET', body } = {}, retried = false) {
     method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined
   });
   if (r.status === 401) { toLogin(); throw new Error('Нужно войти'); }
-  if (r.status === 409 && !retried) { await wake(); return svc(path, { method, body }, true); }
+  if (r.status === 409 && !retried) { await onAsleep(); return svc(path, { method, body }, true); }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || 'Не получилось. Попробуйте ещё раз.');
   return data;
@@ -1107,8 +1139,14 @@ function initStatic() {
     if (screenWanted()) connectScreen(); else disconnectScreen();
     if (!document.hidden && state.currentId) scheduleRefetch(0);
   });
-  // Пока страница открыта и видна, рабочее место не засыпает
-  setInterval(() => { if (!document.hidden) fetch('/api/ping', { method: 'POST' }).catch(() => {}); }, 60000);
+  for (const type of ['pointerdown', 'keydown']) document.addEventListener(type, onAction, { capture: true, passive: true });
+  for (const type of ['pointermove', 'wheel', 'touchmove']) document.addEventListener(type, () => { lastSeen = Date.now(); }, { capture: true, passive: true });
+  // Пока человек что-то делает на странице, рабочее место не засыпает. Ушёл — перестаём его держать и отключаем экран помощника.
+  setInterval(() => {
+    if (state.asleep) return;
+    if (isPresent()) fetch('/api/ping', { method: 'POST', headers: { 'X-Portal-Wake': 'user' } }).catch(() => {});
+    else if (rfb && !document.hidden) { screenPaused = true; disconnectScreen(); }
+  }, 60000);
 }
 
 async function boot() {
