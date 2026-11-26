@@ -52,6 +52,20 @@ function usageScanner() {
   };
 }
 
+// Картинку, нарисованную моделью, кладём человеку в «Мои файлы/Картинки»; возвращаем путь от рабочей папки
+async function saveImage(userId, buffer) {
+  const ep = await containers.endpoint(userId);
+  if (!ep) throw new Error('среда не запущена');
+  const d = new Date(Date.now() + 3 * 3600 * 1000).toISOString(); // московское время в названии
+  const where = `Мои файлы/Картинки/Картинка ${d.slice(0, 10)} ${d.slice(11, 19).replace(/:/g, '-')}.jpg`;
+  const r = await fetch(`http://${ep.ip}:4096/api/experimental/fs/write?path=${encodeURIComponent(`/home/user/workspace/${where}`)}`, {
+    method: 'POST', body: buffer, signal: AbortSignal.timeout(30000),
+    headers: { Authorization: 'Basic ' + Buffer.from(`opencode:${ep.password}`).toString('base64'), 'Content-Type': 'application/octet-stream' }
+  });
+  if (!r.ok) throw new Error(`запись файла: ${r.status} ${(await r.text()).slice(0, 200)}`);
+  return where;
+}
+
 const bearer = (req) => verifyToken((req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
 
 async function handle(req, res) {
@@ -97,6 +111,7 @@ async function handle(req, res) {
       return await gigachat.handle({
         provider, body, res, signal: ac.signal,
         onChunk: () => containers.touch(userId),
+        saveImage: (buffer) => saveImage(userId, buffer),
         onDone: ({ status, usage, error }) => logUsage({
           user: userId, provider: providerId, model: body.model, status, error, ms: Date.now() - started,
           prompt_tokens: usage?.prompt_tokens, completion_tokens: usage?.completion_tokens, cached_tokens: usage?.precached_prompt_tokens

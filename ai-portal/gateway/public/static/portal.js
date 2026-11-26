@@ -48,7 +48,7 @@ function el(tag, props = {}, ...children) {
 const MODELS = [
   { key: 'glm', id: 'glm-5.3', providerID: 'portal-glm', name: 'GLM-5.3', short: 'GLM', hint: 'Умнее. Для сложных задач и документов' },
   { key: 'deepseek', id: 'deepseek-flash', providerID: 'portal-deepseek', name: 'DeepSeek Flash', short: 'DeepSeek', hint: 'Быстрее. Для простых вопросов' },
-  { key: 'giga', id: 'GigaChat-3-Ultra', providerID: 'portal-giga', name: 'GigaChat 3 Ultra', short: 'GigaChat', hint: 'Хорошо работает с русским языком' }
+  { key: 'giga', id: 'GigaChat-3-Ultra', providerID: 'portal-giga', name: 'GigaChat 3 Ultra', short: 'GigaChat', hint: 'Хорошо работает с русским языком. Умеет рисовать картинки' }
 ];
 const modelByKey = (key) => MODELS.find(m => m.key === key) || MODELS[0];
 const modelOfSession = (s) => MODELS.find(m => m.id === s?.model?.id && m.providerID === s?.model?.providerID);
@@ -427,6 +427,7 @@ function render(forceBottom = false) {
   const nearBottom = forceBottom || feed.scrollHeight - feed.scrollTop - feed.clientHeight < 120;
   const empty = !state.currentId && !state.messages.length && !state.pendingUser;
   $('feed-inner').replaceChildren(...(empty ? [welcome()] : buildFeed()));
+  showImages();
   if (nearBottom) feed.scrollTop = feed.scrollHeight;
   $('stop-btn').hidden = !state.busy;
   $('send-btn').hidden = state.busy;
@@ -708,6 +709,30 @@ document.addEventListener('paste', (e) => {
 
 // ─── Правая панель: файлы ───────────────────────────────────────────────────
 const encPath = (p) => p.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+
+// ─── Картинки в ответах ─────────────────────────────────────────────────────
+// Ответ ссылается на файл человека; забираем его один раз и держим в памяти — лента перерисовывается часто
+const imageCache = new Map(); // путь → адрес картинки | 'loading' | 'failed'
+const IMAGE_TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
+function showImages() {
+  for (const img of $('feed-inner').querySelectorAll('img.md-image[data-file]')) {
+    const file = img.dataset.file; const known = imageCache.get(file);
+    if (known === 'failed') { img.replaceWith(el('span', { className: 'md-image-missing', textContent: `Картинка «${base(file)}» — откройте её в «Файлах»` })); continue; }
+    if (known && known !== 'loading') { if (!img.src) img.src = known; continue; }
+    if (known) continue;
+    imageCache.set(file, 'loading');
+    fetch(`/api/oc/fs/read/${encPath(file)}`)
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then(buf => imageCache.set(file, URL.createObjectURL(new Blob([buf], { type: IMAGE_TYPES[file.split('.').pop().toLowerCase()] || 'image/jpeg' }))))
+      .catch(() => imageCache.set(file, 'failed'))
+      .then(showImages);
+  }
+}
+// Нажатие на картинку сохраняет её на устройство
+document.addEventListener('click', (e) => {
+  const img = e.target.closest?.('img.md-image[src]');
+  if (img) el('a', { href: img.src, download: base(img.dataset.file) }).click();
+});
 
 async function loadFiles() {
   const dir = state.filesDir;

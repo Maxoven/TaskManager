@@ -138,6 +138,9 @@ input:focus, textarea:focus { outline: none; border-color: var(--color-focus); b
 .md table { border-collapse: collapse; display: block; overflow-x: auto; font-size: var(--text-sm); }
 .md th, .md td { padding: 6px 10px; border: 1px solid var(--color-border); text-align: left; vertical-align: top; }
 .md th { background: var(--color-surface-sunken); font-weight: var(--weight-semibold); }
+.md img.md-image { display: block; max-width: min(100%, 26rem); height: auto; border-radius: var(--radius-lg); border: 1px solid var(--color-border); background: var(--color-surface-sunken); cursor: pointer; }
+.md img.md-image:not([src]) { width: 15rem; height: 15rem; }
+.md-image-missing { color: var(--color-text-muted); font-size: var(--text-sm); }
 .md blockquote { padding-left: var(--space-3); border-left: 3px solid var(--color-border-strong); color: var(--color-text-muted); }
 .md hr { border: 0; border-top: 1px solid var(--color-border); }
 

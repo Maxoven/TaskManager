@@ -1,10 +1,20 @@
 // Маленький безопасный рендер Markdown для ответов помощника: сначала всё экранируется,
 // затем размечаются абзацы, списки, таблицы, код и ссылки (только http/https).
+// Картинки показываются только из файлов человека: ![подпись](Мои файлы/Картинки/x.jpg) → <img data-file="…">,
+// саму картинку подгружает portal.js. Картинки с чужих сайтов не загружаются.
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+const IMAGE_FILE = /\.(jpe?g|png|gif|webp)$/i;
+
 function inline(text) {
-  const codes = [];
-  let s = esc(text).replace(/`([^`\n]+)`/g, (m, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000`; });
+  const codes = []; const images = [];
+  const source = text.replace(/!\[([^\]\n]*)\]\(([^)\n]+)\)/g, (m, alt, src) => {
+    const file = src.trim().replace(/^\.\//, '');
+    if (/^[a-z][a-z0-9+.-]*:/i.test(file) || file.startsWith('/') || file.split('/').includes('..') || !IMAGE_FILE.test(file)) return m;
+    images.push({ alt, file });
+    return `\u0001${images.length - 1}\u0001`;
+  });
+  let s = esc(source).replace(/`([^`\n]+)`/g, (m, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000`; });
   s = s
     .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
     .replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>')
@@ -12,7 +22,8 @@ function inline(text) {
     .replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
     .replace(/(^|[^*\w])\*([^*\n]+)\*(?![*\w])/g, '$1<em>$2</em>')
     .replace(/~~([^~\n]+)~~/g, '<s>$1</s>');
-  return s.replace(/\u0000(\d+)\u0000/g, (m, i) => `<code>${codes[Number(i)]}</code>`);
+  return s.replace(/\u0000(\d+)\u0000/g, (m, i) => `<code>${codes[Number(i)]}</code>`)
+    .replace(/\u0001(\d+)\u0001/g, (m, i) => `<img class="md-image" data-file="${esc(images[Number(i)].file)}" alt="${esc(images[Number(i)].alt || 'Картинка')}">`);
 }
 
 const cells = (line) => line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());

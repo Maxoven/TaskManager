@@ -2,6 +2,8 @@
 // Отличия Сбера: вход по ключу авторизации → токен на 30 минут; сертификат Минцифры; функции вместо tools
 // (одна за ответ, аргументы объектом, результат — JSON-строкой в сообщении с ролью function); один системный
 // промпт; у физлица один поток — поэтому запросы всех людей идут через общую очередь по одному.
+// Картинки GigaChat рисует встроенной функцией text2image и отдаёт в тексте меткой <img src="номер файла"/> —
+// файл забираем у Сбера, сохраняем человеку (saveImage) и ставим на место метки обычную картинку Markdown.
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
@@ -12,18 +14,20 @@ const CA = [...tls.rootCertificates, fs.readFileSync(path.join(__dirname, '..', 
 const agent = new https.Agent({ keepAlive: true, ca: CA });
 const IDLE_MS = 5 * 60 * 1000; // столько ждём следующий кусок ответа, потом освобождаем очередь
 
-function post(url, { headers, body, signal }) {
+function send(method, url, { headers, body, signal }) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
-    const req = https.request({ host: u.hostname, port: u.port || 443, path: u.pathname + u.search, method: 'POST', agent, headers, signal }, resolve);
+    const req = https.request({ host: u.hostname, port: u.port || 443, path: u.pathname + u.search, method, agent, headers, signal }, resolve);
     req.on('error', reject);
     req.setTimeout(IDLE_MS, () => req.destroy(new Error('GigaChat не отвечает')));
     req.end(body);
   });
 }
-async function readAll(res) {
-  let out = ''; for await (const c of res) out += c; return out;
+const post = (url, options) => send('POST', url, options);
+async function readBuffer(res) {
+  const chunks = []; for await (const c of res) chunks.push(Buffer.from(c)); return Buffer.concat(chunks);
 }
+const readAll = async (res) => (await readBuffer(res)).toString('utf8');
 
 // ---------- Токен доступа ----------
 let token = null; let pending = null;
@@ -147,12 +151,16 @@ function toGiga(body) {
     const t = textOf(m.content);
     if (t) messages.push({ role: 'user', content: t });
   }
+  // Рисование включаем только основному помощнику (у него есть инструменты) — не заголовкам и пересказам
+  const canDraw = tools.length > 0 && body.tool_choice !== 'none' && !tools.some(t => t.function.name === DRAW);
+  if (canDraw) system.push(DRAW_HINT);
   if (system.length) messages.unshift({ role: 'system', content: system.join('\n\n') });
 
   const out = { model: body.model, messages, stream: !!body.stream };
   if (tools.length) {
     out.functions = tools.map(t => ({ name: names.toGiga(t.function.name), description: t.function.description || t.function.name, parameters: cleanSchema(t.function.parameters || { type: 'object' }) }));
     for (const f of out.functions) if (f.parameters.type !== 'object') f.parameters = { type: 'object', properties: {} };
+    if (canDraw) out.functions.push({ name: DRAW }); // встроенная функция: достаточно названия
     const choice = body.tool_choice;
     out.function_call = choice === 'none' ? 'none' : choice?.function?.name ? { name: names.toGiga(choice.function.name) } : 'auto';
   }
@@ -161,6 +169,40 @@ function toGiga(body) {
   if (typeof max === 'number') out.max_tokens = max;
   if (out.stream) out.update_interval = 0;
   return { payload: out, names };
+}
+
+// ---------- Картинки ----------
+const DRAW = 'text2image';
+const DRAW_HINT = 'Ты умеешь рисовать картинки. Если человек просит нарисовать, сгенерировать или придумать изображение (картинку, иллюстрацию, логотип, открытку) — вызови встроенную функцию text2image, не пиши код и не ищи картинку в интернете. Готовая картинка сама сохранится в папку «Мои файлы/Картинки» и покажется человеку в ответе — ссылку на неё не выдумывай.';
+const IMAGE_FAILED = '\n\n(Картинка нарисована, но сохранить её не получилось. Попросите нарисовать ещё раз.)\n\n';
+
+async function downloadImage(provider, fileId, signal) {
+  const res = await send('GET', `${provider.base}/files/${fileId}/content`, { headers: { Accept: 'application/jpg', Authorization: `Bearer ${await accessToken(provider)}` }, signal });
+  const buf = await readBuffer(res);
+  if (res.statusCode !== 200) throw new Error(`файл картинки: ${res.statusCode} ${buf.toString('utf8').slice(0, 200)}`);
+  return buf;
+}
+
+// Пропускает текст ответа, а метки <img src="…"/> меняет на сохранённые картинки. Метка может прийти по кускам.
+function imageFilter(replace) {
+  let hold = '';
+  const partial = (s) => { for (let n = Math.min(4, s.length); n > 0; n--) if ('<img'.startsWith(s.slice(-n))) return s.length - n; return s.length; };
+  return {
+    async push(text) {
+      hold += text; let out = '';
+      for (;;) {
+        const i = hold.indexOf('<img');
+        if (i < 0) { const cut = partial(hold); out += hold.slice(0, cut); hold = hold.slice(cut); break; }
+        const j = hold.indexOf('>', i);
+        if (j < 0) { out += hold.slice(0, i); hold = hold.slice(i); break; }
+        const id = /src="([0-9a-fA-F-]{36})"/.exec(hold.slice(i, j + 1));
+        out += hold.slice(0, i) + (id ? await replace(id[1]) : '');
+        hold = hold.slice(j + 1);
+      }
+      return out;
+    },
+    flush() { const rest = hold; hold = ''; return rest; }
+  };
 }
 
 // ---------- GigaChat → OpenAI ----------
@@ -202,8 +244,15 @@ async function callGiga(provider, payload, signal) {
 }
 
 // body — запрос OpenCode в формате OpenAI. onDone({status, usage, error}) — для учёта расхода.
-async function handle({ provider, body, res, signal, onChunk, onDone }) {
+// saveImage(buffer) сохраняет картинку человеку и возвращает путь к ней от его рабочей папки.
+async function handle({ provider, body, res, signal, onChunk, onDone, saveImage }) {
   const { payload, names } = toGiga(body);
+  const images = imageFilter(async (fileId) => {
+    try {
+      const where = await saveImage(await downloadImage(provider, fileId, signal));
+      return `\n\n![Картинка](${where})\n\n`;
+    } catch (e) { console.error('[giga] картинка:', e.message); return IMAGE_FAILED; }
+  });
   const send = (status, message) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: { message, type: 'aiportal' } })); };
 
   await inQueue(async () => {
@@ -225,6 +274,7 @@ async function handle({ provider, body, res, signal, onChunk, onDone }) {
       const j = JSON.parse(await readAll(up)); const c = j.choices?.[0] || {}; const msg = c.message || {};
       const calls = toolCalls(msg, names);
       let content = msg.content || '';
+      content = (await images.push(content)) + images.flush();
       if (c.finish_reason === 'blacklist' && !content) content = BLACKLIST_TEXT;
       if (c.finish_reason === 'error' && !content && !calls) content = BAD_ARGS_TEXT;
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -236,15 +286,18 @@ async function handle({ provider, body, res, signal, onChunk, onDone }) {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no' });
     const emit = (delta, finish, extra) => res.write(`data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created, model: body.model, choices: [{ index: 0, delta, finish_reason: finish || null }], ...extra })}\n\n`);
     let usage = null; let finished = false; let sawText = false; let sawCall = false; let first = true; let buf = '';
-    const onEvent = (line) => {
+    const onEvent = async (line) => {
       if (!line.startsWith('data:')) return;
       const raw = line.slice(5).trim(); if (!raw || raw === '[DONE]') return;
       let j; try { j = JSON.parse(raw); } catch { return; }
       if (j.usage) usage = j.usage;
       const c = j.choices?.[0]; if (!c) return;
       const d = c.delta || {}; const delta = {};
+      if (d.role === 'function_in_progress') return; // «осталось 00:19», пока рисуется картинка
       if (first) { delta.role = 'assistant'; first = false; }
-      if (d.content) { delta.content = d.content; sawText = true; }
+      let text = d.content ? await images.push(d.content) : '';
+      if (c.finish_reason) text += images.flush();
+      if (text) { delta.content = text; sawText = true; }
       const calls = toolCalls(d, names);
       if (calls) { delta.tool_calls = calls; sawCall = true; }
       if (c.finish_reason === 'blacklist' && !sawText) delta.content = BLACKLIST_TEXT;
@@ -258,13 +311,13 @@ async function handle({ provider, body, res, signal, onChunk, onDone }) {
       for await (const chunk of up) {
         onChunk();
         buf += chunk; let i;
-        while ((i = buf.indexOf('\n')) >= 0) { onEvent(buf.slice(0, i).trim()); buf = buf.slice(i + 1); }
+        while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); await onEvent(line); }
       }
-      if (buf.trim()) onEvent(buf.trim());
+      if (buf.trim()) await onEvent(buf.trim());
     } catch (e) {
       if (!signal.aborted) console.error('[giga] поток оборвался:', e.message);
     }
-    if (!finished) emit({}, sawCall ? 'tool_calls' : 'stop');
+    if (!finished) { const rest = images.flush(); emit(rest ? { content: rest } : {}, sawCall ? 'tool_calls' : 'stop'); }
     if (usage) res.write(`data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created, model: body.model, choices: [], usage: usageOf(usage) })}\n\n`);
     res.end('data: [DONE]\n\n');
     onDone({ status: 200, usage });
