@@ -30,6 +30,27 @@ module.exports = {
     usageLog: process.env.USAGE_LOG || require('path').join(__dirname, '..', 'data', 'usage.jsonl')
   },
 
+  // Выход сред в интернет: зарубежные сайты — через туннель ssh на свой сервер за границей (EGRESS_SSH=user@host).
+  // Не задан — все сайты открываются напрямую с этого сервера.
+  egress: {
+    sshTarget: process.env.EGRESS_SSH || '',
+    sshKey: process.env.EGRESS_SSH_KEY || require('path').join(require('os').homedir(), '.ssh', 'aiportal_tunnel'),
+    socksPort: num(process.env.EGRESS_SOCKS_PORT, 1081),
+    // Всегда через туннель и по имени (внутри России у них свои, замедленные адреса) / всегда напрямую
+    forceTunnel: (process.env.EGRESS_FORCE_TUNNEL || 'youtube.com,youtu.be,googlevideo.com,ytimg.com,ggpht.com,youtube-nocookie.com').split(',').map(s => s.trim()).filter(Boolean),
+    forceDirect: (process.env.EGRESS_FORCE_DIRECT || '').split(',').map(s => s.trim()).filter(Boolean)
+  },
+
+  // Сторож памяти сред (memwatch.js): доли от потолка памяти среды
+  memwatch: {
+    intervalMs: num(process.env.MEMWATCH_INTERVAL_MS, 10000),
+    trimAt: num(process.env.MEMWATCH_TRIM_AT, 0.80),      // закрыть фоновые вкладки браузера
+    restartAt: num(process.env.MEMWATCH_RESTART_AT, 0.92), // перезапустить браузер
+    keepUnderPressure: 2,                                   // сколько недавних вкладок оставить при нехватке памяти
+    maxTabs: num(process.env.MEMWATCH_MAX_TABS, 6),        // больше вкладок не держим и без нехватки
+    cooldownMs: 30000
+  },
+
   sandbox: {
     image: process.env.SANDBOX_IMAGE || 'aiportal-sandbox:latest',
     network: 'aiportal',
@@ -39,10 +60,13 @@ module.exports = {
     resolvConf: process.env.SANDBOX_RESOLV_CONF || require('path').join(__dirname, '..', 'data', 'resolv.conf'),
     volumeHelper: '/usr/local/sbin/aiportal-volume',
     diskGb: num(process.env.SANDBOX_DISK_GB, 5),
-    memoryMb: num(process.env.SANDBOX_MEMORY_MB, 1536),
+    // Память: первые bigSlots одновременно работающих сред получают memoryMb, следующие — memorySmallMb
+    memoryMb: num(process.env.SANDBOX_MEMORY_MB, 2048),
+    memorySmallMb: num(process.env.SANDBOX_MEMORY_SMALL_MB, 1536),
+    bigSlots: num(process.env.SANDBOX_BIG_SLOTS, 2),
     swapMb: num(process.env.SANDBOX_SWAP_MB, 1536),
     cpus: num(process.env.SANDBOX_CPUS, 1.5),
-    maxActive: num(process.env.MAX_ACTIVE, 2),
+    maxActive: num(process.env.MAX_ACTIVE, 3),
     idleMinutes: num(process.env.IDLE_MINUTES, 30),
     screen: process.env.SANDBOX_SCREEN || '1280x800'
   }

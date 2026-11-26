@@ -390,3 +390,4 @@ server.on('upgrade', async (req, socket, head) => {
 server.listen(config.port, '127.0.0.1', () => console.log(`🚀 Портал: 127.0.0.1:${config.port}`));
 startLlmProxy();
 containers.startReaper();
+require('./memwatch').startMemwatch();

@@ -1,4 +1,6 @@
-// Прокси моделей для сред: /deepseek/v1/chat/completions и /zai/v1/chat/completions.
+// Прокси моделей для сред: /deepseek/v1/chat/completions и /zai/v1/chat/completions,
+// а также /mcp/taskmanager (Task Manager и почта) и выход сред на сайты (egress.js):
+// среды используют этот же порт как обычный веб-прокси.
 // Проверяет токен среды и модель из разрешённого списка, подставляет настоящий ключ, пишет расход по людям.
 const http = require('http');
 const fs = require('fs');
@@ -8,6 +10,7 @@ const config = require('./config');
 const { verifyToken } = require('./tokens');
 const containers = require('./containers');
 const { handleTaskmanagerMcp } = require('./taskmanagerMcp');
+const egress = require('./egress');
 
 const MAX_BODY = 30 * 1024 * 1024;
 const ALLOWED_PATHS = new Set(['chat/completions']);
@@ -51,6 +54,7 @@ function usageScanner() {
 const bearer = (req) => verifyToken((req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
 
 async function handle(req, res) {
+  if (egress.handleHttp(req, res)) return; // среда открывает сайт по http:// через прокси
   if (req.url === '/mcp/taskmanager') {
     const uid = bearer(req);
     if (uid === null) return send(res, 401, 'Неверный токен среды');
@@ -131,6 +135,7 @@ function startLlmProxy() {
       if (!res.headersSent) send(res, 500, 'Ошибка прокси моделей'); else res.end();
     });
   });
+  egress.startEgress(server); // выход сред в интернет: CONNECT на этом же порту
   server.requestTimeout = 0;
   server.headersTimeout = 60000;
   server.listen(config.llm.port, config.llm.host, () =>

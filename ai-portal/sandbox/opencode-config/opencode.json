@@ -42,6 +42,16 @@
       "action": "provider.use",
       "resource": "portal-*",
       "effect": "allow"
+    },
+    {
+      "action": "websearch.use",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "websearch.use",
+      "resource": "exa",
+      "effect": "allow"
     }
   ],
   "model": "portal-glm/glm-5.3",
@@ -108,5 +118,8 @@
       "resource": "*",
       "effect": "deny"
     }
-  ]
+  ],
+  "websearch": {
+    "provider": "exa"
+  }
 }

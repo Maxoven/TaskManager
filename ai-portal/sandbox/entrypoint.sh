@@ -8,6 +8,14 @@ W=${SCREEN%x*}; H=${SCREEN#*x}
 mkdir -p "$HOME/workspace" "$HOME/.config/opencode" "$HOME/.cache" "$HOME/.local/share"
 mkdir -p "$HOME/.work"
 
+# Выход в интернет — через шлюз портала: он сам решает, открыть сайт напрямую или через зарубежный сервер.
+# К самому шлюзу (модели, Task Manager) и к локальным службам среды — без прокси.
+PROXY=${AIPORTAL_PROXY-http://172.30.0.1:3210}
+if [ -n "$PROXY" ]; then
+  export HTTP_PROXY=$PROXY HTTPS_PROXY=$PROXY http_proxy=$PROXY https_proxy=$PROXY
+  export NO_PROXY=localhost,127.0.0.1,172.30.0.1 no_proxy=localhost,127.0.0.1,172.30.0.1
+fi
+
 keep() { # keep <имя> <команда...>: перезапускать, если упала
   local name=$1; shift
   ( while true; do "$@" >>"/tmp/$name.log" 2>&1; echo "[$(date +%T)] $name exited ($?)" >>"/tmp/$name.log"; sleep 2; done ) &
@@ -39,6 +47,7 @@ keep chromium bash -c 'run_chromium "$@"' _ --no-sandbox --test-type --disable-d
   --disable-features=Translate,MediaRouter --password-store=basic \
   --user-data-dir="$HOME/.config/chromium-portal" \
   --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 \
+  ${PROXY:+--proxy-server=$PROXY --proxy-bypass-list=172.30.0.1} \
   --window-position=0,0 --window-size="${W},${H}" --start-maximized --lang=ru about:blank
 
 cd "$HOME/workspace"

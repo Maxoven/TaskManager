@@ -38,11 +38,28 @@ async function listRunning() {
   return list.map(c => Number(c.Labels['aiportal.user']));
 }
 
+async function listRunningDetailed() {
+  const list = await docker.listContainers({ filters: { label: ['aiportal.user'], status: ['running'] } });
+  return list.map(c => ({ id: Number(c.Labels['aiportal.user']), containerId: c.Id }));
+}
+
+// Сколько памяти дать среде, которая сейчас запускается: «большие» места — первым bigSlots работающим
+const memoryOf = (mb) => ({ Memory: mb * 1024 * 1024, MemorySwap: (mb + S.swapMb) * 1024 * 1024 });
+async function memoryForNext() {
+  const running = await docker.listContainers({ filters: { label: ['aiportal.user'], status: ['running'] } });
+  let big = 0;
+  for (const c of running) {
+    const info = await docker.getContainer(c.Id).inspect();
+    if (info.HostConfig.Memory >= S.memoryMb * 1024 * 1024) big++;
+  }
+  return big < S.bigSlots ? S.memoryMb : S.memorySmallMb;
+}
+
 async function imageId() {
   return (await docker.getImage(S.image).inspect()).Id;
 }
 
-async function create(user) {
+async function create(user, memoryMb) {
   await run('sudo', [S.volumeHelper, 'ensure', String(user.id), String(S.diskGb)]);
   const password = crypto.randomBytes(24).toString('base64url');
   return docker.createContainer({
@@ -64,8 +81,7 @@ async function create(user) {
         `${S.dataDir}/home/u${user.id}:/home/user`,
         `${S.resolvConf}:/etc/resolv.conf:ro`
       ],
-      Memory: S.memoryMb * 1024 * 1024,
-      MemorySwap: (S.memoryMb + S.swapMb) * 1024 * 1024,
+      ...memoryOf(memoryMb),
       NanoCpus: Math.round(S.cpus * 1e9),
       PidsLimit: 2048,
       ShmSize: 512 * 1024 * 1024,
@@ -112,8 +128,13 @@ async function ensureRunning(user) {
       await docker.getContainer(nameFor(id)).remove({ force: true });
       info = null;
     }
-    if (!info) await create(user);
-    else await run('sudo', [S.volumeHelper, 'ensure', String(id), String(S.diskGb)]);
+    const memoryMb = await memoryForNext();
+    if (!info) await create(user, memoryMb);
+    else {
+      await run('sudo', [S.volumeHelper, 'ensure', String(id), String(S.diskGb)]);
+      // Среда уже есть — выставляем ей память под свободное сейчас место (применится при запуске)
+      if (info.HostConfig.Memory !== memoryOf(memoryMb).Memory) await docker.getContainer(nameFor(id)).update(memoryOf(memoryMb));
+    }
     await docker.getContainer(nameFor(id)).start();
     info = await inspect(id);
     const ep = endpointOf(info);
@@ -185,4 +206,4 @@ function startReaper() {
   }, 60000).unref();
 }
 
-module.exports = { ensureRunning, endpoint, exec, stop, status, touch, listRunning, startReaper };
+module.exports = { ensureRunning, endpoint, exec, stop, status, touch, listRunning, listRunningDetailed, startReaper };
