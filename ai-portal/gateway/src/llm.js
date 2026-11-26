@@ -1,4 +1,4 @@
-// Прокси моделей для сред: /deepseek/v1/chat/completions и /zai/v1/chat/completions,
+// Прокси моделей для сред: /deepseek/v1/chat/completions, /zai/v1/chat/completions и /giga/v1/chat/completions (GigaChat, через gigachat.js),
 // а также /mcp/taskmanager (Task Manager и почта) и выход сред на сайты (egress.js):
 // среды используют этот же порт как обычный веб-прокси.
 // Проверяет токен среды и модель из разрешённого списка, подставляет настоящий ключ, пишет расход по людям.
@@ -11,6 +11,7 @@ const { verifyToken } = require('./tokens');
 const containers = require('./containers');
 const { handleTaskmanagerMcp } = require('./taskmanagerMcp');
 const egress = require('./egress');
+const gigachat = require('./gigachat');
 
 const MAX_BODY = 30 * 1024 * 1024;
 const ALLOWED_PATHS = new Set(['chat/completions']);
@@ -63,7 +64,7 @@ async function handle(req, res) {
     try { raw = await readBody(req); } catch (e) { return send(res, e.status || 400, e.message); }
     return handleTaskmanagerMcp(req, res, uid, raw);
   }
-  const m = /^\/(deepseek|zai)\/v1\/(.+?)(\?.*)?$/.exec(req.url);
+  const m = /^\/(deepseek|zai|giga)\/v1\/(.+?)(\?.*)?$/.exec(req.url);
   if (!m) return send(res, 404, 'Not found');
   const [, providerId, apiPath] = m;
   const provider = config.llm.providers[providerId];
@@ -88,6 +89,21 @@ async function handle(req, res) {
   const started = Date.now();
   const ac = new AbortController();
   res.on('close', () => { if (!res.writableFinished) ac.abort(); });
+
+  if (provider.adapter === 'gigachat') {
+    // У GigaChat свой формат и очередь по одному запросу; пока человек ждёт очереди, среду не усыпляем
+    const waiting = setInterval(() => containers.touch(userId), 30000);
+    try {
+      return await gigachat.handle({
+        provider, body, res, signal: ac.signal,
+        onChunk: () => containers.touch(userId),
+        onDone: ({ status, usage, error }) => logUsage({
+          user: userId, provider: providerId, model: body.model, status, error, ms: Date.now() - started,
+          prompt_tokens: usage?.prompt_tokens, completion_tokens: usage?.completion_tokens, cached_tokens: usage?.precached_prompt_tokens
+        })
+      });
+    } finally { clearInterval(waiting); }
+  }
 
   let upstream;
   try {

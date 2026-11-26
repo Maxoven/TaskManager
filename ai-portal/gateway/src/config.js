@@ -25,7 +25,12 @@ module.exports = {
     port: num(process.env.LLM_PORT, 3210),
     providers: {
       deepseek: { base: 'https://api.deepseek.com', key: process.env.DEEPSEEK_API_KEY, models: ['deepseek-flash'] },
-      zai: { base: 'https://api.z.ai/api/paas/v4', key: process.env.ZAI_API_KEY, models: ['glm-5.3'] }
+      zai: { base: 'https://api.z.ai/api/paas/v4', key: process.env.ZAI_API_KEY, models: ['glm-5.3'] },
+      // GigaChat (Сбер): ключ авторизации из личного кабинета; формат переводит gigachat.js
+      giga: {
+        adapter: 'gigachat', base: 'https://api.giga.chat/v1', oauth: 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth',
+        key: process.env.GIGACHAT_AUTH_KEY, scope: process.env.GIGACHAT_SCOPE || 'GIGACHAT_API_PERS', models: ['GigaChat-3-Ultra']
+      }
     },
     usageLog: process.env.USAGE_LOG || require('path').join(__dirname, '..', 'data', 'usage.jsonl')
   },

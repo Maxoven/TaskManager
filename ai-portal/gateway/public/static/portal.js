@@ -47,7 +47,8 @@ function el(tag, props = {}, ...children) {
 // Человек выбирает, кто отвечает ему в разговоре. Подручные помощника всегда работают на DeepSeek.
 const MODELS = [
   { key: 'glm', id: 'glm-5.3', providerID: 'portal-glm', name: 'GLM-5.3', short: 'GLM', hint: 'Умнее. Для сложных задач и документов' },
-  { key: 'deepseek', id: 'deepseek-flash', providerID: 'portal-deepseek', name: 'DeepSeek Flash', short: 'DeepSeek', hint: 'Быстрее. Для простых вопросов' }
+  { key: 'deepseek', id: 'deepseek-flash', providerID: 'portal-deepseek', name: 'DeepSeek Flash', short: 'DeepSeek', hint: 'Быстрее. Для простых вопросов' },
+  { key: 'giga', id: 'GigaChat-3-Ultra', providerID: 'portal-giga', name: 'GigaChat 3 Ultra', short: 'GigaChat', hint: 'Хорошо работает с русским языком' }
 ];
 const modelByKey = (key) => MODELS.find(m => m.key === key) || MODELS[0];
 const modelOfSession = (s) => MODELS.find(m => m.id === s?.model?.id && m.providerID === s?.model?.providerID);

@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 HOST=taskmanager
 REMOTE='~/aiportal'
 OPENCODE_VERSION=${OPENCODE_VERSION:-2.4.1}
-KEYS_DIR=..   # deepseek.txt и glm.txt лежат в корне репозитория (в git не попадают)
+KEYS_DIR=..   # deepseek.txt, glm.txt и gigachat.txt лежат в корне репозитория (в git не попадают)
 
 echo "1/5 Загрузка кода"
 rsync -az --delete --exclude node_modules --exclude .env --exclude data gateway/ "$HOST:$REMOTE/gateway/"
@@ -26,6 +26,7 @@ put_key() { # put_key <ИМЯ_В_ENV> <файл>: ключ уходит по std
 }
 put_key DEEPSEEK_API_KEY "$KEYS_DIR/deepseek.txt"
 put_key ZAI_API_KEY "$KEYS_DIR/glm.txt"
+put_key GIGACHAT_AUTH_KEY "$KEYS_DIR/gigachat.txt"
 
 if [ -z "${SKIP_IMAGE:-}" ]; then
   echo "3/5 Образ среды (OpenCode $OPENCODE_VERSION)"

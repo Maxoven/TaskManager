@@ -30,6 +30,29 @@
           "name": "DeepSeek V4.1 Flash"
         }
       }
+    },
+    "portal-giga": {
+      "name": "GigaChat",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "http://172.30.0.1:3210/giga/v1",
+        "apiKey": "{env:AIPORTAL_TOKEN}",
+        "chunkTimeout": 1800000
+      },
+      "models": {
+        "GigaChat-3-Ultra": {
+          "name": "GigaChat 3 Ultra",
+          "capabilities": {
+            "tools": true,
+            "input": ["text"],
+            "output": ["text"]
+          },
+          "limit": {
+            "context": 128000,
+            "output": 8192
+          }
+        }
+      }
     }
   },
   "policies": [
