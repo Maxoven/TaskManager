@@ -191,6 +191,7 @@ input:focus, textarea:focus { outline: none; border-color: var(--color-focus); b
 .composer-attach:hover:not(:disabled) { background: var(--color-surface-hover); color: var(--color-text); }
 .composer-send { width: var(--control-height); min-height: var(--control-height); padding: 0; border-radius: var(--radius-lg); }
 .composer-stop { min-height: var(--control-height); border-radius: var(--radius-lg); }
+.composer-stop .stop-short { display: none; }
 .composer-note { max-width: 800px; margin: var(--space-2) auto 0; text-align: center; font-size: var(--text-xs); color: var(--color-text-faint); }
 
 /* ── Правая панель ── */
@@ -325,6 +326,17 @@ button.file-name { justify-content: flex-start; min-height: 36px; padding: 0; fo
   .model-btn { min-height: 44px; padding: 0 var(--space-2); }
   .model-btn .model-name-long { display: none; }
 }
+/* На телефоне поле ввода занимает всю ширину, а кнопки уходят строкой под него — иначе название модели съедает место для текста */
+@media (max-width: 600px) {
+  .composer-row { position: relative; flex-wrap: wrap; align-items: center; row-gap: 0; }
+  .composer textarea { order: -1; flex: 1 0 100%; }
+  .model-picker { position: static; margin-left: auto; }
+  .model-menu { left: var(--space-2); right: var(--space-2); width: auto; }  /* во всю ширину поля, а не от кнопки — иначе уезжает за край */
+  .composer-stop { min-height: 44px; }
+  .composer-stop .stop-long { display: none; }
+  .composer-stop .stop-short { display: inline; }
+}
+@media (max-width: 360px) { .composer-row { column-gap: var(--space-1); } }
 
 /* ── Голосовой ввод ── */
 .composer-mic { width: var(--control-height); min-height: var(--control-height); padding: 0; border-radius: var(--radius-lg); color: var(--color-text-muted); flex-shrink: 0; }
